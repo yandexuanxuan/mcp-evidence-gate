@@ -4,7 +4,7 @@
   "private": true,
   "description": "Experimental downstream verifier and CI policy gate for evidence-scoped MCP security scan receipts.",
   "type": "module",
-  "packageManager": "pnpm@11.19.0",
+  "packageManager": "pnpm@10.33.4",
   "bin": {
     "mcp-evidence-gate": "./dist/cli.js"
   },
