@@ -1,0 +1,50 @@
+import * as core from "@actions/core";
+import { readFile } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
+import { evaluatePolicy, policyByName } from "./core/policy.js";
+import { verifyReceipt } from "./core/verify.js";
+import type { ReceiptInput } from "./core/types.js";
+
+function workspacePath(input: string): string {
+  return isAbsolute(input) ? input : resolve(process.env.GITHUB_WORKSPACE ?? process.cwd(), input);
+}
+
+function formatReasons(reasons: readonly { code: string; detail: string }[]): string {
+  return reasons.map((reason) => `${reason.code}: ${reason.detail}`).join("; ");
+}
+
+export async function runAction(): Promise<void> {
+  const receiptInput = core.getInput("receipt", { required: true });
+  const artifactInput = core.getInput("artifact", { required: true });
+  const policyInput = core.getInput("policy", { required: true });
+  const receiptPath = workspacePath(receiptInput);
+  const artifactPath = workspacePath(artifactInput);
+  const policy = policyByName(policyInput);
+  const evaluatedAt = new Date();
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8")) as ReceiptInput;
+  const verification = await verifyReceipt(receipt, artifactPath, evaluatedAt);
+  const evaluation = evaluatePolicy(receipt, verification, policy);
+
+  core.setOutput("decision", evaluation.decision);
+  core.setOutput("receipt-verdict", evaluation.receiptVerdict);
+  core.setOutput("profile", evaluation.profile);
+  core.info(`MCP Evidence Gate decision: ${evaluation.decision.toUpperCase()}`);
+
+  if (evaluation.decision === "warn") {
+    core.warning(formatReasons(evaluation.reasons));
+    return;
+  }
+  if (evaluation.decision === "fail") {
+    core.setFailed(`FAIL: ${formatReasons(evaluation.reasons)}`);
+    return;
+  }
+  if (evaluation.decision === "inconclusive") {
+    core.setFailed(`INCONCLUSIVE: evidence does not support this release. ${formatReasons(evaluation.reasons)}`);
+  }
+}
+
+if (process.env.GITHUB_ACTIONS === "true") {
+  void runAction().catch((error) => {
+    core.setFailed(error instanceof Error ? error.message : String(error));
+  });
+}

@@ -1,11 +1,10 @@
-import { createRequire } from "node:module";
 import type { ErrorObject, ValidateFunction } from "ajv";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import * as addFormatsModule from "ajv-formats";
+import schema from "../profiles/registry-pr-1404/security-scan-receipt.schema.json" assert { type: "json" };
 import type { Finding, ReceiptInput } from "./types.js";
 
-const require = createRequire(import.meta.url);
-const Ajv2020: any = require("ajv/dist/2020.js").default;
-const addFormats: any = require("ajv-formats").default;
-const schema = require("../profiles/registry-pr-1404/security-scan-receipt.schema.json") as object;
+const addFormats: any = (addFormatsModule as any).default ?? addFormatsModule;
 const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
 addFormats(ajv, { mode: "full" });
 const validate = ajv.compile(schema) as ValidateFunction<ReceiptInput>;

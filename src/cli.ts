@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { evaluatePolicy, PERMISSIVE_POLICY, STRICT_RELEASE_EXAMPLE_POLICY, type PolicyConfig } from "./core/policy.js";
+import { evaluatePolicy, policyByName, type PolicyConfig } from "./core/policy.js";
 import { verifyReceipt } from "./core/verify.js";
 import type { ReceiptInput, VerificationResult } from "./core/types.js";
 
@@ -42,12 +42,6 @@ Exit codes:
   2  INCONCLUSIVE
   3  CLI, input, or runtime error
 `;
-
-function policyByName(name: string): PolicyConfig {
-  if (name === PERMISSIVE_POLICY.name) return PERMISSIVE_POLICY;
-  if (name === STRICT_RELEASE_EXAMPLE_POLICY.name) return STRICT_RELEASE_EXAMPLE_POLICY;
-  throw new CliInputError(`unknown policy: ${name}`);
-}
 
 function parseArgs(argv: string[]): VerifyArgs | "help" | "version" {
   if (argv.includes("--help") || argv.length === 0) return "help";

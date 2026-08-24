@@ -55,3 +55,17 @@ node dist/cli.js verify \
 ```
 
 Use `--format json` for machine-readable output. Exit codes are stable: `0` means PASS or WARN, `1` means FAIL, `2` means INCONCLUSIVE, and `3` means CLI/input/runtime error. The policy must be explicit; no MCP Registry policy is implied.
+
+## GitHub Action
+
+The experimental Action is a thin wrapper around the same verifier and policy layer. It requires all three inputs and does not install dependencies in the consuming repository:
+
+```yaml
+- uses: yandexuanxuan/mcp-evidence-gate@<immutable-commit-sha>
+  with:
+    receipt: fixtures/valid/complete-clean.json
+    artifact: fixtures/artifacts/current-artifact.bin
+    policy: permissive
+```
+
+It emits `decision`, `receipt-verdict`, and `profile`. PASS and WARN succeed; FAIL and INCONCLUSIVE fail the step. INCONCLUSIVE means the evidence does not support the release, not that the server was proven unsafe. The checked-in `dist/action/index.cjs` is a self-contained Node 20 bundle.

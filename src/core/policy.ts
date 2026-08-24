@@ -39,6 +39,12 @@ export const STRICT_RELEASE_EXAMPLE_POLICY: PolicyConfig = {
   allowedAttestations: ["third-party-attested"]
 };
 
+export function policyByName(name: string): PolicyConfig {
+  if (name === PERMISSIVE_POLICY.name) return PERMISSIVE_POLICY;
+  if (name === STRICT_RELEASE_EXAMPLE_POLICY.name) return STRICT_RELEASE_EXAMPLE_POLICY;
+  throw new Error(`unknown policy: ${name}`);
+}
+
 const RANK: Record<PolicyDecision, number> = {
   pass: 0,
   warn: 1,
