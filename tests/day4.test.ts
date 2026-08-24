@@ -58,4 +58,17 @@ describe("pinned receipt structural conformance", () => {
     });
     expect(result.details?.some((detail) => detail.includes("must be equal to one of the allowed values"))).toBe(true);
   });
+
+  it("short-circuits before artifact I/O when structure is invalid", async () => {
+    const result = await verifyReceipt(
+      { verdict: "clean" },
+      "/definitely/not/exist.tgz",
+      now
+    );
+    expect(result.checks).toHaveLength(1);
+    expect(result.checks[0]).toMatchObject({
+      id: "receipt_structure",
+      status: "invalid"
+    });
+  });
 });

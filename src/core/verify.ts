@@ -27,9 +27,16 @@ export async function verifyReceipt(
   artifactPath: string,
   now: Date
 ): Promise<VerificationResult> {
+  const structure = validateReceiptStructure(receipt);
+  if (structure.status !== "pass") {
+    return {
+      profile: REGISTRY_PR_1404_PROFILE.id,
+      checks: [structure]
+    };
+  }
   const evidence = await verifyReceiptEvidence(receipt, artifactPath, now);
   return {
     profile: evidence.profile,
-    checks: [validateReceiptStructure(receipt), ...evidence.checks]
+    checks: [structure, ...evidence.checks]
   };
 }

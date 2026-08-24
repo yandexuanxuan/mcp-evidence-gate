@@ -16,6 +16,17 @@ The pinned profile follows the proposal's current schema boundary: `scanner`, `s
 
 The pinned structural schema is stored at `src/profiles/registry-pr-1404/security-scan-receipt.schema.json` with provenance in the adjacent `profile.json`. `verifyReceipt()` runs structural conformance first and then evidence-specific checks. `verifyReceiptEvidence()` remains the partial invariant layer for callers that already performed structural validation.
 
+## Policy layer
+
+`evaluatePolicy()` produces a project-defined release decision without changing the input receipt. It keeps the scanner's `verdict` separate from the gate decision and uses deterministic precedence: `fail > inconclusive > warn > pass`.
+
+Two built-in policies are included:
+
+- `permissive`: freshness is optional, no scope is required, and all three attestation values are allowed.
+- `strict-release-example`: requires freshness, `package` plus `handler-validation`, and `third-party-attested`.
+
+The strict policy is a project-defined example, not an MCP Registry requirement or trust hierarchy. Policy is local and deterministic; it does not contact the Registry, download evidence, run scanners, or modify receipts.
+
 ## Status
 
 Phase 1 / experimental. The profile is deliberately pinned to an open, unmerged proposal. If the proposal changes, a new profile will be added instead of silently changing existing behavior.
