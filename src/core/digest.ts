@@ -3,22 +3,34 @@ import { readFile } from "node:fs/promises";
 import { REGISTRY_PR_1404_PROFILE } from "../profiles/registry-pr-1404.js";
 import type { Finding } from "./types.js";
 
-const DIGEST_PATTERN = /^([a-z0-9]+):([0-9a-f]{64})$/i;
+const DIGEST_PATTERN = /^([a-z0-9]+):([a-f0-9]+)$/;
+
+export class DigestError extends Error {
+  constructor(public readonly code: "malformed_digest" | "unsupported_digest_algorithm") {
+    super(code);
+  }
+}
 
 export interface ParsedDigest {
-  algorithm: "sha256";
+  algorithm: string;
   hex: string;
 }
 
 export function parseDigest(value: unknown): ParsedDigest {
   if (typeof value !== "string") {
-    throw new Error("invalid_digest");
+    throw new DigestError("malformed_digest");
   }
   const match = DIGEST_PATTERN.exec(value);
-  if (!match || match[1] !== REGISTRY_PR_1404_PROFILE.digestAlgorithm) {
-    throw new Error("unsupported_or_malformed_digest");
+  if (!match) {
+    throw new DigestError("malformed_digest");
   }
-  return { algorithm: "sha256", hex: match[2].toLowerCase() };
+  if (match[1] !== REGISTRY_PR_1404_PROFILE.digestAlgorithm) {
+    throw new DigestError("unsupported_digest_algorithm");
+  }
+  if (match[2].length !== 64) {
+    throw new DigestError("malformed_digest");
+  }
+  return { algorithm: match[1], hex: match[2] };
 }
 
 export function sha256Bytes(bytes: Uint8Array): string {
@@ -37,10 +49,11 @@ export async function verifyArtifactBinding(
   try {
     expected = parseDigest(receiptDigest);
   } catch (error) {
+    const code = error instanceof DigestError ? error.code : "malformed_digest";
     return {
       id: "artifact_binding",
-      status: "invalid",
-      reason: error instanceof Error ? error.message : "invalid_digest"
+      status: code === "unsupported_digest_algorithm" ? "unsupported" : "invalid",
+      reason: code
     };
   }
 

@@ -1,6 +1,5 @@
 {
   "scanned_artifact_digest": "sha256:41f89c83905a2335098d6acf5a8fe9e490ee2b4747229e46349cfdf4e3973c78",
-  "freshness_expires_at": "2026-08-26T00:00:00Z",
   "scan_scope": ["package"],
-  "verdict": "clean"
+  "verdict": "inconclusive"
 }

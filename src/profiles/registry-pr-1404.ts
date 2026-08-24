@@ -11,20 +11,36 @@ export const REGISTRY_PR_1404_PROFILE = {
   status: "open-unmerged",
   receiptMetaKey: "io.modelcontextprotocol.registry/security-scan",
   digestAlgorithm: "sha256",
-  digestHexCase: "case-insensitive-canonicalize",
+  digestHexCase: "lowercase-only",
   staleAtExpiry: true,
   requiredFields: [
     "scanner",
-    "scanner_version",
-    "scanned_artifact_ref",
     "scanned_artifact_digest",
     "scan_scope",
     "verdict",
     "scanned_at",
-    "freshness_expires_at",
     "attestation"
   ] as const,
+  conditionalRequiredFields: {
+    inconclusive: ["inconclusive_reason"]
+  } as const,
+  optionalFields: [
+    "scanner_version",
+    "rule_set_ref",
+    "policy_profile",
+    "scanned_artifact_ref",
+    "freshness_expires_at",
+    "evidence_ref",
+    "evidence_digest"
+  ] as const,
   verdicts: ["clean", "warnings", "findings", "inconclusive"] as const,
+  inconclusiveReasons: [
+    "artifact_digest_mismatch",
+    "unsupported_package_type",
+    "scope_excludes_handler_validation",
+    "evidence_unavailable",
+    "stale_scan"
+  ] as const,
   attestations: ["publisher-asserted", "registry-attested", "third-party-attested"] as const
 } as const;
 

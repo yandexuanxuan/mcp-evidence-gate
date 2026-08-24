@@ -23,12 +23,11 @@ describe("exact-byte digest", () => {
     expect(sha256Bytes(one)).not.toBe(sha256Bytes(two));
   });
 
-  it("canonicalizes hex case but rejects unsupported algorithms", () => {
-    const parsed = parseDigest(
+  it("follows the profile's lowercase digest grammar and separates algorithms", () => {
+    expect(() => parseDigest(
       "sha256:41F89C83905A2335098D6ACF5A8FE9E490EE2B4747229E46349CFDF4E3973C78"
-    );
-    expect(parsed.hex).toBe("41f89c83905a2335098d6acf5a8fe9e490ee2b4747229e46349cfdf4e3973c78");
-    expect(() => parseDigest("sha512:" + "0".repeat(64))).toThrow("unsupported_or_malformed_digest");
+    )).toThrow("malformed_digest");
+    expect(() => parseDigest("sha512:" + "0".repeat(64))).toThrow("unsupported_digest_algorithm");
   });
 
   it("binds the valid fixture to the exact artifact bytes", async () => {
@@ -53,7 +52,7 @@ describe("exact-byte digest", () => {
     expect(result).toMatchObject({
       id: "artifact_binding",
       status: "invalid",
-      reason: "unsupported_or_malformed_digest"
+      reason: "malformed_digest"
     });
   });
 });
@@ -86,8 +85,8 @@ describe("injected-clock freshness", () => {
   it("distinguishes missing and malformed freshness timestamps", async () => {
     expect(evaluateFreshness(undefined, { now })).toMatchObject({
       id: "freshness",
-      status: "invalid",
-      reason: "freshness_missing"
+      status: "not_present",
+      reason: "freshness_not_declared"
     });
     const receipt = await fixture("invalid/malformed-date.json");
     const result = await verifyReceiptEvidence(receipt, artifactPath, now);
