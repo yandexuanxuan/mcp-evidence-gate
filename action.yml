@@ -15,7 +15,7 @@ inputs:
 
 outputs:
   decision:
-    description: Derived policy decision: pass, warn, inconclusive, or fail.
+    description: "Derived policy decision: pass, warn, inconclusive, or fail."
   receipt-verdict:
     description: Original scanner verdict from the receipt.
   profile:
