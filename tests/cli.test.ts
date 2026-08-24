@@ -1,0 +1,107 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { runCli } from "../src/cli.js";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const artifact = resolve(root, "fixtures/artifacts/current-artifact.bin");
+const receipt = (name: string) => resolve(root, "fixtures/valid", name);
+const invalidReceipt = (name: string) => resolve(root, "fixtures/invalid", name);
+const now = "2026-08-25T00:00:00Z";
+
+async function invoke(args: string[]) {
+  let stdout = "";
+  let stderr = "";
+  const code = await runCli(args, {
+    stdout: (text) => { stdout += text; },
+    stderr: (text) => { stderr += text; }
+  });
+  return { code, stdout, stderr };
+}
+
+describe("mcp-evidence-gate verify CLI", () => {
+  it("returns PASS with exit 0", async () => {
+    const result = await invoke([
+      "verify", "--receipt", receipt("complete-clean.json"), "--artifact", artifact,
+      "--policy", "permissive", "--now", now
+    ]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Decision: PASS");
+    expect(result.stderr).toBe("");
+  });
+
+  it("returns WARN with exit 0", async () => {
+    const result = await invoke([
+      "verify", "--receipt", receipt("complete-warnings.json"), "--artifact", artifact,
+      "--policy", "permissive", "--now", now
+    ]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Decision: WARN");
+  });
+
+  it("returns INCONCLUSIVE with exit 2 for a digest mismatch", async () => {
+    const result = await invoke([
+      "verify", "--receipt", receipt("complete-digest-mismatch.json"), "--artifact", artifact,
+      "--policy", "permissive", "--now", now
+    ]);
+    expect(result.code).toBe(2);
+    expect(result.stdout).toContain("Decision: INCONCLUSIVE");
+  });
+
+  it("returns FAIL with exit 1 for findings and structural invalidity", async () => {
+    const findings = await invoke([
+      "verify", "--receipt", receipt("complete-findings.json"), "--artifact", artifact,
+      "--policy", "permissive", "--now", now
+    ]);
+    const structural = await invoke([
+      "verify", "--receipt", invalidReceipt("structural-missing-scanner.json"), "--artifact", "/missing.tgz",
+      "--policy", "permissive", "--now", now
+    ]);
+    expect(findings.code).toBe(1);
+    expect(structural.code).toBe(1);
+  });
+
+  it("returns runtime error exit 3 for missing input or unknown policy", async () => {
+    const missingReceipt = await invoke([
+      "verify", "--receipt", "/missing.json", "--artifact", artifact,
+      "--policy", "permissive", "--now", now
+    ]);
+    const missingArtifact = await invoke([
+      "verify", "--receipt", receipt("complete-clean.json"), "--artifact", "/missing.tgz",
+      "--policy", "permissive", "--now", now
+    ]);
+    const unknownPolicy = await invoke([
+      "verify", "--receipt", receipt("complete-clean.json"), "--artifact", artifact,
+      "--policy", "unknown", "--now", now
+    ]);
+    expect(missingReceipt.code).toBe(3);
+    expect(missingArtifact.code).toBe(3);
+    expect(unknownPolicy.code).toBe(3);
+    expect(missingReceipt.stdout).toBe("");
+  });
+
+  it("emits parseable JSON only on stdout", async () => {
+    const result = await invoke([
+      "verify", "--receipt", receipt("complete-digest-mismatch.json"), "--artifact", artifact,
+      "--policy", "permissive", "--format", "json", "--now", now
+    ]);
+    const model = JSON.parse(result.stdout);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(model).toMatchObject({
+      tool: "mcp-evidence-gate",
+      policy: "permissive",
+      receiptVerdict: "clean",
+      decision: "inconclusive"
+    });
+  });
+
+  it("supports help and version without requiring verification inputs", async () => {
+    const help = await invoke(["--help"]);
+    const version = await invoke(["--version"]);
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("Usage:");
+    expect(version.code).toBe(0);
+    expect(version.stdout.trim()).toBe("0.1.0");
+  });
+});

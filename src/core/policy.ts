@@ -65,6 +65,13 @@ export function evaluatePolicy(
 
   if (structure?.status === "invalid") {
     add("receipt_structure_invalid", "fail", "Receipt failed the pinned structural conformance profile.");
+    return {
+      policy: policy.name,
+      profile: REGISTRY_PR_1404_PROFILE.id,
+      decision: "fail",
+      reasons,
+      receiptVerdict: typeof receipt.verdict === "string" ? receipt.verdict : "unknown"
+    };
   }
 
   for (const check of verification.checks) {

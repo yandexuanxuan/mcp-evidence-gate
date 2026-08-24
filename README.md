@@ -39,4 +39,19 @@ pnpm build
 pnpm test
 ```
 
-No external repository, scanner, or endpoint is contacted by the current skeleton.
+No external repository, scanner, or endpoint is contacted by the current CLI or core verifier.
+
+## CLI
+
+Build the executable package and run the only command:
+
+```bash
+pnpm build
+node dist/cli.js verify \
+  --receipt fixtures/valid/complete-clean.json \
+  --artifact fixtures/artifacts/current-artifact.bin \
+  --policy permissive \
+  --now 2026-08-25T00:00:00Z
+```
+
+Use `--format json` for machine-readable output. Exit codes are stable: `0` means PASS or WARN, `1` means FAIL, `2` means INCONCLUSIVE, and `3` means CLI/input/runtime error. The policy must be explicit; no MCP Registry policy is implied.

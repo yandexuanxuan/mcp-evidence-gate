@@ -99,7 +99,26 @@ describe("deterministic policy decisions", () => {
     const verification = await verifyReceipt(receipt, "/definitely/not/exist.tgz", now);
     const result = evaluatePolicy(receipt, verification, PERMISSIVE_POLICY);
     expect(result).toMatchObject({ decision: "fail", receiptVerdict: "clean" });
+    expect(result.reasons).toHaveLength(1);
+    expect(result.reasons[0]).toMatchObject({ code: "receipt_structure_invalid", decision: "fail" });
     expect(verification.checks).toHaveLength(1);
+  });
+
+  it("enforces fail over inconclusive over warn", async () => {
+    const { receipt, verification } = await verifiedReceipt({
+      verdict: "warnings",
+      freshness_expires_at: "2026-08-24T00:00:00Z",
+      attestation: "publisher-asserted"
+    });
+    const result = evaluatePolicy(receipt, verification, STRICT_RELEASE_EXAMPLE_POLICY);
+    expect(result.decision).toBe("fail");
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "attestation_not_allowed", decision: "fail" }),
+        expect.objectContaining({ code: "stale_scan", decision: "inconclusive" }),
+        expect.objectContaining({ code: "receipt_warnings", decision: "warn" })
+      ])
+    );
   });
 
   it("does not mutate the receipt input", async () => {

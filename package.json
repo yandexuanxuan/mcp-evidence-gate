@@ -4,11 +4,15 @@
   "private": true,
   "description": "Experimental downstream verifier and CI policy gate for evidence-scoped MCP security scan receipts.",
   "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "bin": {
+    "mcp-evidence-gate": "./dist/cli.js"
+  },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit"
