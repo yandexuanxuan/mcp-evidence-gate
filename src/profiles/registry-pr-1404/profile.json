@@ -1,0 +1,7 @@
+{
+  "source": "modelcontextprotocol/registry#1404",
+  "commit": "20747d3253ba8638161dd95f1cec70df02993c22",
+  "experimental": true,
+  "status": "open-unmerged",
+  "schema": "security-scan-receipt.schema.json"
+}

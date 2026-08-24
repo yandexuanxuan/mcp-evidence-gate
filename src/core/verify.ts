@@ -3,6 +3,7 @@ import { verifyArtifactBinding } from "./digest.js";
 import { evaluateFreshness } from "./freshness.js";
 import { validateInconclusiveReason } from "./inconclusive.js";
 import { validateScanScope } from "./scope.js";
+import { validateReceiptStructure } from "./structural.js";
 import type { ReceiptInput, VerificationResult } from "./types.js";
 
 export async function verifyReceiptEvidence(
@@ -18,5 +19,17 @@ export async function verifyReceiptEvidence(
       validateScanScope(receipt.scan_scope),
       validateInconclusiveReason(receipt.verdict, receipt.inconclusive_reason)
     ]
+  };
+}
+
+export async function verifyReceipt(
+  receipt: ReceiptInput,
+  artifactPath: string,
+  now: Date
+): Promise<VerificationResult> {
+  const evidence = await verifyReceiptEvidence(receipt, artifactPath, now);
+  return {
+    profile: evidence.profile,
+    checks: [validateReceiptStructure(receipt), ...evidence.checks]
   };
 }
