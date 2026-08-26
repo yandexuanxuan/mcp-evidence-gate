@@ -44,6 +44,34 @@ describe("strict RFC3339 freshness", () => {
       reason: "malformed_timestamp"
     });
   });
+
+  it("rejects future scans and expiry windows that predate the scan", () => {
+    expect(evaluateFreshness("2026-08-26T00:00:00Z", {
+      now,
+      scannedAt: "2026-08-26T00:00:00Z"
+    })).toMatchObject({
+      status: "invalid",
+      reason: "scan_timestamp_in_future"
+    });
+    expect(evaluateFreshness("2026-08-24T00:00:00Z", {
+      now,
+      scannedAt: "2026-08-24T12:00:00Z"
+    })).toMatchObject({
+      status: "invalid",
+      reason: "freshness_before_scan"
+    });
+  });
+
+  it("enforces a consumer-side maximum scan age", () => {
+    expect(evaluateFreshness("2026-09-01T00:00:00Z", {
+      now,
+      scannedAt: "2026-08-01T00:00:00Z",
+      maxScanAgeMs: 7 * 24 * 60 * 60 * 1000
+    })).toMatchObject({
+      status: "inconclusive",
+      reason: "scan_too_old"
+    });
+  });
 });
 
 describe("scan scope", () => {

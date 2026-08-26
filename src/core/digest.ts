@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { REGISTRY_PR_1404_PROFILE } from "../profiles/registry-pr-1404.js";
 import type { Finding } from "./types.js";
 
@@ -38,7 +38,11 @@ export function sha256Bytes(bytes: Uint8Array): string {
 }
 
 export async function sha256Artifact(path: string): Promise<string> {
-  return sha256Bytes(await readFile(path));
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) {
+    hash.update(chunk);
+  }
+  return `sha256:${hash.digest("hex")}`;
 }
 
 export async function verifyArtifactBinding(

@@ -22,7 +22,10 @@ export async function runAction(): Promise<void> {
   const policy = policyByName(policyInput);
   const evaluatedAt = new Date();
   const receipt = JSON.parse(await readFile(receiptPath, "utf8")) as ReceiptInput;
-  const verification = await verifyReceipt(receipt, artifactPath, evaluatedAt);
+  const verification = await verifyReceipt(receipt, artifactPath, evaluatedAt, {
+    maxScanAgeMs: policy.maxScanAgeMs,
+    clockSkewMs: policy.clockSkewMs
+  });
   const evaluation = evaluatePolicy(receipt, verification, policy);
 
   core.setOutput("decision", evaluation.decision);
