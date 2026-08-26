@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -36,6 +36,9 @@ jobs:
 
       - name: Build package
         run: pnpm build
+
+      - name: Verify generated Action bundle is committed
+        run: git diff --exit-code
 
       - name: CLI smoke test
         run: >-

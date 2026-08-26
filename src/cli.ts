@@ -5,7 +5,7 @@ import { evaluatePolicy, policyByName, type PolicyConfig } from "./core/policy.j
 import { verifyReceipt } from "./core/verify.js";
 import type { ReceiptInput, VerificationResult } from "./core/types.js";
 
-export const CLI_VERSION = "0.1.0";
+export const CLI_VERSION = "0.1.0-alpha.1";
 
 export interface CliIO {
   stdout: (text: string) => void;

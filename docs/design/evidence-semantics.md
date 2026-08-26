@@ -1,15 +1,9 @@
-# Review of downstream evidence-gate recommendations
+# Evidence semantics
 
-Date: 2026-08-26
+This document records the stable semantics behind the gate. It is a product
+design note, not an application or review log.
 
-## Decision
-
-The recommendations are technically sound where they tighten consumer-side
-admission semantics. They are not a reason to implement receipt-array
-aggregation or cryptographic attestation before the upstream receipt contract
-stabilizes.
-
-## Adopted in this revision
+## Current semantics
 
 - `scanned_at` is parsed with the same strict RFC3339 rules as expiry values.
 - A scan more than five minutes in the future is invalid.
@@ -25,10 +19,8 @@ stabilizes.
   not authenticate an issuer, signature, certificate, or OIDC identity.
 - Dogfood permanently exercises PASS, expected INCONCLUSIVE, and expected FAIL
   decisions, including a malformed receipt.
-- Application/outreach research notes were moved out of this public product
-  repository to `D:\Projects\mcp-evidence-gate-notes`.
 
-## Deliberately deferred
+## Deliberate non-goals for this profile
 
 - Multiple-receipt aggregation: the current CLI and Action remain single-receipt
   consumers until the upstream array contract and maintainer expectations are
