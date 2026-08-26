@@ -1,6 +1,0 @@
-{
-  "scanned_artifact_digest": "sha512:not-a-sha256-digest",
-  "freshness_expires_at": "2026-08-26T00:00:00Z",
-  "scan_scope": ["package"],
-  "verdict": "clean"
-}
