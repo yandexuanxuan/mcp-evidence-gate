@@ -4,6 +4,8 @@ Experimental downstream verifier and CI policy gate for evidence-scoped MCP secu
 
 This project is **not** an MCP Registry implementation, an official MCP project, or a scanner. It initially targets the experimental receipt proposal in [modelcontextprotocol/registry#1404](https://github.com/modelcontextprotocol/registry/pull/1404).
 
+`mcp-evidence-gate` is a downstream release admission controller: it turns scanner-neutral MCP security receipts into deterministic, auditable release decisions without conflating evidence quality with server safety.
+
 The first compatibility profile is pinned to:
 
 ```text
