@@ -73,3 +73,7 @@ The experimental Action is a thin wrapper around the same verifier and policy la
 ```
 
 It emits `decision`, `receipt-verdict`, and `profile`. PASS and WARN succeed; FAIL and INCONCLUSIVE fail the step. INCONCLUSIVE means the evidence does not support the release, not that the server was proven unsafe. The checked-in `dist/action/index.cjs` is a self-contained Node 24 bundle matching the declared Action runtime.
+
+## Tested downstream integration
+
+The companion [mcp-evidence-gate-dogfood](https://github.com/yandexuanxuan/mcp-evidence-gate-dogfood) repository runs the Action at immutable commit `85943698f82639ec40e19a57e2ee74a0958574b0` and asserts PASS, INCONCLUSIVE, and FAIL cases. Consumers should pin a full commit SHA rather than a moving branch.

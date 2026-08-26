@@ -102,6 +102,6 @@ describe("mcp-evidence-gate verify CLI", () => {
     expect(help.code).toBe(0);
     expect(help.stdout).toContain("Usage:");
     expect(version.code).toBe(0);
-    expect(version.stdout.trim()).toBe("0.1.0");
+    expect(version.stdout.trim()).toBe("0.1.0-alpha.1");
   });
 });
