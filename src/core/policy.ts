@@ -9,6 +9,8 @@ export interface PolicyConfig {
   requireFreshness: boolean;
   requiredScopes: readonly string[];
   allowedAttestations: readonly Attestation[];
+  maxScanAgeMs?: number;
+  clockSkewMs?: number;
 }
 
 export interface PolicyReason {
@@ -29,14 +31,17 @@ export const PERMISSIVE_POLICY: PolicyConfig = {
   name: "permissive",
   requireFreshness: false,
   requiredScopes: [],
-  allowedAttestations: REGISTRY_PR_1404_PROFILE.attestations
+  allowedAttestations: REGISTRY_PR_1404_PROFILE.attestations,
+  clockSkewMs: 5 * 60 * 1000
 };
 
 export const STRICT_RELEASE_EXAMPLE_POLICY: PolicyConfig = {
   name: "strict-release-example",
   requireFreshness: true,
   requiredScopes: ["package", "handler-validation"],
-  allowedAttestations: ["third-party-attested"]
+  allowedAttestations: ["third-party-attested"],
+  maxScanAgeMs: 7 * 24 * 60 * 60 * 1000,
+  clockSkewMs: 5 * 60 * 1000
 };
 
 export function policyByName(name: string): PolicyConfig {
@@ -88,7 +93,13 @@ export function evaluatePolicy(
       add("unsupported_digest_algorithm", "inconclusive", "The receipt digest algorithm is not supported by this verifier.");
     }
     if (check.id === "freshness" && check.status === "inconclusive") {
-      add("stale_scan", "inconclusive", "Receipt freshness has expired and cannot support a clean claim.");
+      add(
+        check.reason === "scan_too_old" ? "scan_too_old" : "stale_scan",
+        "inconclusive",
+        check.reason === "scan_too_old"
+          ? "Receipt scanned_at exceeds the maximum age allowed by policy."
+          : "Receipt freshness has expired and cannot support a clean claim."
+      );
     }
     if (check.status === "invalid" && check.id !== "receipt_structure") {
       add("evidence_check_invalid", "fail", `${check.id} evidence check is invalid.`);

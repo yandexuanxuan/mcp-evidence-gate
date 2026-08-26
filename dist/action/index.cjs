@@ -27884,7 +27884,7 @@ __export(action_exports, {
 });
 module.exports = __toCommonJS(action_exports);
 var core = __toESM(require_core(), 1);
-var import_promises2 = require("node:fs/promises");
+var import_promises = require("node:fs/promises");
 var import_node_path = require("node:path");
 
 // src/profiles/registry-pr-1404.ts
@@ -27935,13 +27935,16 @@ var PERMISSIVE_POLICY = {
   name: "permissive",
   requireFreshness: false,
   requiredScopes: [],
-  allowedAttestations: REGISTRY_PR_1404_PROFILE.attestations
+  allowedAttestations: REGISTRY_PR_1404_PROFILE.attestations,
+  clockSkewMs: 5 * 60 * 1e3
 };
 var STRICT_RELEASE_EXAMPLE_POLICY = {
   name: "strict-release-example",
   requireFreshness: true,
   requiredScopes: ["package", "handler-validation"],
-  allowedAttestations: ["third-party-attested"]
+  allowedAttestations: ["third-party-attested"],
+  maxScanAgeMs: 7 * 24 * 60 * 60 * 1e3,
+  clockSkewMs: 5 * 60 * 1e3
 };
 function policyByName(name) {
   if (name === PERMISSIVE_POLICY.name)
@@ -27984,7 +27987,11 @@ function evaluatePolicy(receipt, verification, policy) {
       add("unsupported_digest_algorithm", "inconclusive", "The receipt digest algorithm is not supported by this verifier.");
     }
     if (check.id === "freshness" && check.status === "inconclusive") {
-      add("stale_scan", "inconclusive", "Receipt freshness has expired and cannot support a clean claim.");
+      add(
+        check.reason === "scan_too_old" ? "scan_too_old" : "stale_scan",
+        "inconclusive",
+        check.reason === "scan_too_old" ? "Receipt scanned_at exceeds the maximum age allowed by policy." : "Receipt freshness has expired and cannot support a clean claim."
+      );
     }
     if (check.status === "invalid" && check.id !== "receipt_structure") {
       add("evidence_check_invalid", "fail", `${check.id} evidence check is invalid.`);
@@ -28023,7 +28030,7 @@ function evaluatePolicy(receipt, verification, policy) {
 
 // src/core/digest.ts
 var import_node_crypto = require("node:crypto");
-var import_promises = require("node:fs/promises");
+var import_node_fs = require("node:fs");
 var DIGEST_PATTERN = /^([a-z0-9]+):([a-f0-9]+)$/;
 var DigestError = class extends Error {
   constructor(code) {
@@ -28047,11 +28054,12 @@ function parseDigest(value) {
   }
   return { algorithm: match[1], hex: match[2] };
 }
-function sha256Bytes(bytes) {
-  return `sha256:${(0, import_node_crypto.createHash)("sha256").update(bytes).digest("hex")}`;
-}
 async function sha256Artifact(path) {
-  return sha256Bytes(await (0, import_promises.readFile)(path));
+  const hash = (0, import_node_crypto.createHash)("sha256");
+  for await (const chunk of (0, import_node_fs.createReadStream)(path)) {
+    hash.update(chunk);
+  }
+  return `sha256:${hash.digest("hex")}`;
 }
 async function verifyArtifactBinding(receiptDigest, artifactPath) {
   let expected;
@@ -28095,6 +28103,26 @@ function evaluateFreshness(expiresAt, options) {
   if (!(options.now instanceof Date) || Number.isNaN(options.now.getTime())) {
     throw new Error("invalid_now");
   }
+  const now = options.now.getTime();
+  const clockSkewMs = options.clockSkewMs ?? 5 * 60 * 1e3;
+  let scannedAtMs;
+  if (options.scannedAt !== void 0) {
+    if (typeof options.scannedAt !== "string" || options.scannedAt.length === 0) {
+      return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
+    }
+    scannedAtMs = parseStrictDateTime(options.scannedAt);
+    if (scannedAtMs === void 0) {
+      return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
+    }
+    if (scannedAtMs > now + clockSkewMs) {
+      return {
+        id: "freshness",
+        status: "invalid",
+        reason: "scan_timestamp_in_future",
+        actual: options.scannedAt
+      };
+    }
+  }
   if (expiresAt === void 0) {
     return { id: "freshness", status: "not_present", reason: "freshness_not_declared" };
   }
@@ -28105,7 +28133,23 @@ function evaluateFreshness(expiresAt, options) {
   if (expiry === void 0) {
     return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
   }
-  const now = options.now.getTime();
+  if (scannedAtMs !== void 0 && expiry < scannedAtMs) {
+    return {
+      id: "freshness",
+      status: "invalid",
+      reason: "freshness_before_scan",
+      expected: options.scannedAt,
+      actual: expiresAt
+    };
+  }
+  if (scannedAtMs !== void 0 && options.maxScanAgeMs !== void 0 && now - scannedAtMs > options.maxScanAgeMs) {
+    return {
+      id: "freshness",
+      status: "inconclusive",
+      reason: "scan_too_old",
+      actual: options.scannedAt
+    };
+  }
   if (expiry <= now) {
     return { id: "freshness", status: "inconclusive", reason: "stale_scan", actual: expiresAt };
   }
@@ -28157,41 +28201,24 @@ function validateScanScope(value) {
 var import__ = __toESM(require__(), 1);
 var addFormatsModule = __toESM(require_dist(), 1);
 
-// src/profiles/registry-pr-1404/security-scan-receipt.schema.json
-var security_scan_receipt_schema_default = {
+// src/profiles/registry-pr-1404/security-scan-receipt.schema.ts
+var SECURITY_SCAN_RECEIPT_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: "https://github.com/yandexuanxuan/mcp-evidence-gate/schemas/registry-pr-1404/20747d3253ba8638161dd95f1cec70df02993c22/security-scan-receipt",
   title: "MCP Registry #1404 SecurityScanReceipt",
   description: "Pinned experimental subset of the open MCP Registry #1404 receipt proposal.",
   type: "object",
   additionalProperties: true,
-  required: [
-    "scanner",
-    "scanned_artifact_digest",
-    "scan_scope",
-    "verdict",
-    "scanned_at",
-    "attestation"
-  ],
+  required: ["scanner", "scanned_artifact_digest", "scan_scope", "verdict", "scanned_at", "attestation"],
   properties: {
     scanner: { type: "string" },
     scanner_version: { type: "string" },
     rule_set_ref: { type: "string" },
     policy_profile: { type: "string" },
     scanned_artifact_ref: { type: "string" },
-    scanned_artifact_digest: {
-      type: "string",
-      pattern: "^[a-z0-9]+:[a-f0-9]+$"
-    },
-    scan_scope: {
-      type: "array",
-      minItems: 1,
-      items: { type: "string" }
-    },
-    verdict: {
-      type: "string",
-      enum: ["clean", "warnings", "findings", "inconclusive"]
-    },
+    scanned_artifact_digest: { type: "string", pattern: "^[a-z0-9]+:[a-f0-9]+$" },
+    scan_scope: { type: "array", minItems: 1, items: { type: "string" } },
+    verdict: { type: "string", enum: ["clean", "warnings", "findings", "inconclusive"] },
     inconclusive_reason: {
       type: "string",
       enum: [
@@ -28205,25 +28232,13 @@ var security_scan_receipt_schema_default = {
     scanned_at: { type: "string", format: "date-time" },
     freshness_expires_at: { type: "string", format: "date-time" },
     evidence_ref: { type: "string", format: "uri" },
-    evidence_digest: {
-      type: "string",
-      pattern: "^[a-z0-9]+:[a-f0-9]+$"
-    },
-    attestation: {
-      type: "string",
-      enum: ["publisher-asserted", "registry-attested", "third-party-attested"]
-    }
+    evidence_digest: { type: "string", pattern: "^[a-z0-9]+:[a-f0-9]+$" },
+    attestation: { type: "string", enum: ["publisher-asserted", "registry-attested", "third-party-attested"] }
   },
   allOf: [
     {
-      if: {
-        properties: {
-          verdict: { const: "inconclusive" }
-        }
-      },
-      then: {
-        required: ["inconclusive_reason"]
-      }
+      if: { properties: { verdict: { const: "inconclusive" } } },
+      then: { required: ["inconclusive_reason"] }
     }
   ]
 };
@@ -28232,7 +28247,7 @@ var security_scan_receipt_schema_default = {
 var addFormats = addFormatsModule.default ?? addFormatsModule;
 var ajv = new import__.Ajv2020({ allErrors: true, strict: true, strictRequired: false });
 addFormats(ajv, { mode: "full" });
-var validate = ajv.compile(security_scan_receipt_schema_default);
+var validate = ajv.compile(SECURITY_SCAN_RECEIPT_SCHEMA);
 function formatErrors(errors) {
   return (errors ?? []).map((error) => {
     const path = error.instancePath || "/";
@@ -28252,18 +28267,22 @@ function validateReceiptStructure(receipt) {
 }
 
 // src/core/verify.ts
-async function verifyReceiptEvidence(receipt, artifactPath, now) {
+async function verifyReceiptEvidence(receipt, artifactPath, now, freshnessOptions = {}) {
   return {
     profile: REGISTRY_PR_1404_PROFILE.id,
     checks: [
       await verifyArtifactBinding(receipt.scanned_artifact_digest, artifactPath),
-      evaluateFreshness(receipt.freshness_expires_at, { now }),
+      evaluateFreshness(receipt.freshness_expires_at, {
+        now,
+        scannedAt: receipt.scanned_at,
+        ...freshnessOptions
+      }),
       validateScanScope(receipt.scan_scope),
       validateInconclusiveReason(receipt.verdict, receipt.inconclusive_reason)
     ]
   };
 }
-async function verifyReceipt(receipt, artifactPath, now) {
+async function verifyReceipt(receipt, artifactPath, now, freshnessOptions = {}) {
   const structure = validateReceiptStructure(receipt);
   if (structure.status !== "pass") {
     return {
@@ -28271,7 +28290,7 @@ async function verifyReceipt(receipt, artifactPath, now) {
       checks: [structure]
     };
   }
-  const evidence = await verifyReceiptEvidence(receipt, artifactPath, now);
+  const evidence = await verifyReceiptEvidence(receipt, artifactPath, now, freshnessOptions);
   return {
     profile: evidence.profile,
     checks: [structure, ...evidence.checks]
@@ -28293,8 +28312,11 @@ async function runAction() {
   const artifactPath = workspacePath(artifactInput);
   const policy = policyByName(policyInput);
   const evaluatedAt = /* @__PURE__ */ new Date();
-  const receipt = JSON.parse(await (0, import_promises2.readFile)(receiptPath, "utf8"));
-  const verification = await verifyReceipt(receipt, artifactPath, evaluatedAt);
+  const receipt = JSON.parse(await (0, import_promises.readFile)(receiptPath, "utf8"));
+  const verification = await verifyReceipt(receipt, artifactPath, evaluatedAt, {
+    maxScanAgeMs: policy.maxScanAgeMs,
+    clockSkewMs: policy.clockSkewMs
+  });
   const evaluation = evaluatePolicy(receipt, verification, policy);
   core.setOutput("decision", evaluation.decision);
   core.setOutput("receipt-verdict", evaluation.receiptVerdict);

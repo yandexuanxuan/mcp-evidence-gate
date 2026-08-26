@@ -42,10 +42,29 @@ describe("deterministic policy decisions", () => {
 
   it("maps stale evidence to inconclusive", async () => {
     const { receipt, verification } = await verifiedReceipt({
-      freshness_expires_at: "2026-08-24T00:00:00Z"
+      scanned_at: "2026-08-24T00:00:00Z",
+      freshness_expires_at: "2026-08-24T23:59:59Z"
     });
     const result = evaluatePolicy(receipt, verification, PERMISSIVE_POLICY);
     expect(result.decision).toBe("inconclusive");
+  });
+
+  it("does not let a publisher-selected long expiry bypass strict max age", async () => {
+    const { receipt } = await verifiedReceipt({
+      scanned_at: "2026-08-01T00:00:00Z",
+      freshness_expires_at: "2036-08-01T00:00:00Z",
+      scan_scope: ["package", "handler-validation"],
+      attestation: "third-party-attested"
+    });
+    const verification = await verifyReceipt(receipt, artifactPath, now, {
+      maxScanAgeMs: STRICT_RELEASE_EXAMPLE_POLICY.maxScanAgeMs,
+      clockSkewMs: STRICT_RELEASE_EXAMPLE_POLICY.clockSkewMs
+    });
+    const result = evaluatePolicy(receipt, verification, STRICT_RELEASE_EXAMPLE_POLICY);
+    expect(result.decision).toBe("inconclusive");
+    expect(result.reasons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "scan_too_old" })])
+    );
   });
 
   it("makes optional freshness policy-dependent", async () => {
@@ -54,6 +73,16 @@ describe("deterministic policy decisions", () => {
     const withoutFreshness = await verifyReceipt(receipt, artifactPath, now);
     expect(evaluatePolicy(receipt, withoutFreshness, PERMISSIVE_POLICY).decision).toBe("pass");
     expect(evaluatePolicy(receipt, withoutFreshness, STRICT_RELEASE_EXAMPLE_POLICY).decision).toBe("fail");
+  });
+
+  it("still fails strict policy when freshness is omitted from an old receipt", async () => {
+    const { receipt } = await verifiedReceipt({ scanned_at: "2026-08-01T00:00:00Z" });
+    delete receipt.freshness_expires_at;
+    const verification = await verifyReceipt(receipt, artifactPath, now, {
+      maxScanAgeMs: STRICT_RELEASE_EXAMPLE_POLICY.maxScanAgeMs,
+      clockSkewMs: STRICT_RELEASE_EXAMPLE_POLICY.clockSkewMs
+    });
+    expect(evaluatePolicy(receipt, verification, STRICT_RELEASE_EXAMPLE_POLICY)).toMatchObject({ decision: "fail" });
   });
 
   it("applies required scopes without changing structural validity", async () => {
@@ -107,7 +136,8 @@ describe("deterministic policy decisions", () => {
   it("enforces fail over inconclusive over warn", async () => {
     const { receipt, verification } = await verifiedReceipt({
       verdict: "warnings",
-      freshness_expires_at: "2026-08-24T00:00:00Z",
+      scanned_at: "2026-08-24T00:00:00Z",
+      freshness_expires_at: "2026-08-24T23:59:59Z",
       attestation: "publisher-asserted"
     });
     const result = evaluatePolicy(receipt, verification, STRICT_RELEASE_EXAMPLE_POLICY);

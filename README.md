@@ -10,7 +10,9 @@ The first compatibility profile is pinned to:
 registry-pr-1404@20747d3253ba8638161dd95f1cec70df02993c22
 ```
 
-The verifier will answer whether a receipt is still eligible to support a release by checking artifact binding, freshness, non-empty scope, evidence integrity, inconclusive reasons, and attestation policy. It will not discover vulnerabilities or claim that a server is globally safe.
+The verifier answers whether a receipt is still eligible to support a release by checking artifact binding, freshness, non-empty scope, evidence metadata conformance, inconclusive reasons, and local attestation policy. It will not discover vulnerabilities or claim that a server is globally safe.
+
+`evidence_digest` is currently validated as receipt metadata only; this release does not hash or bind a separate evidence report. Use the artifact digest check for byte-level binding. The `attestation` value is declarative metadata, not a cryptographically authenticated issuer identity or signature.
 
 The pinned profile follows the proposal's current schema boundary: `scanner`, `scanned_artifact_digest`, `scan_scope`, `verdict`, `scanned_at`, and `attestation` are required; `freshness_expires_at` is optional; `inconclusive_reason` is required only when `verdict` is `inconclusive`. Digest parsing currently supports lowercase `sha256:<64-hex>` values. Other well-formed algorithms are reported as unsupported by this verifier, not as malformed receipts. Scope values remain open strings so future upstream values are accepted.
 
@@ -23,7 +25,7 @@ The pinned structural schema is stored at `src/profiles/registry-pr-1404/securit
 Two built-in policies are included:
 
 - `permissive`: freshness is optional, no scope is required, and all three attestation values are allowed.
-- `strict-release-example`: requires freshness, `package` plus `handler-validation`, and `third-party-attested`.
+- `strict-release-example`: a project-defined metadata policy that requires freshness, `package` plus `handler-validation`, `third-party-attested`, and a maximum scan age of seven days. It does not authenticate the attestation value.
 
 The strict policy is a project-defined example, not an MCP Registry requirement or trust hierarchy. Policy is local and deterministic; it does not contact the Registry, download evidence, run scanners, or modify receipts.
 
@@ -58,7 +60,7 @@ Use `--format json` for machine-readable output. Exit codes are stable: `0` mean
 
 ## GitHub Action
 
-The experimental Action is a thin wrapper around the same verifier and policy layer. It requires all three inputs and does not install dependencies in the consuming repository:
+The experimental Action is a thin wrapper around the same verifier and policy layer. It runs on the Node 24 GitHub Actions runtime, requires all three inputs, and does not install dependencies in the consuming repository:
 
 ```yaml
 - uses: yandexuanxuan/mcp-evidence-gate@<immutable-commit-sha>
@@ -68,4 +70,4 @@ The experimental Action is a thin wrapper around the same verifier and policy la
     policy: permissive
 ```
 
-It emits `decision`, `receipt-verdict`, and `profile`. PASS and WARN succeed; FAIL and INCONCLUSIVE fail the step. INCONCLUSIVE means the evidence does not support the release, not that the server was proven unsafe. The checked-in `dist/action/index.cjs` is a self-contained Node 20 bundle.
+It emits `decision`, `receipt-verdict`, and `profile`. PASS and WARN succeed; FAIL and INCONCLUSIVE fail the step. INCONCLUSIVE means the evidence does not support the release, not that the server was proven unsafe. The checked-in `dist/action/index.cjs` is a self-contained Node 24 bundle matching the declared Action runtime.

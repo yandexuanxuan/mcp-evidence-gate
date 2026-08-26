@@ -143,7 +143,10 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
     const policy = policyByName(parsed.policy);
     const evaluatedAt = evaluationTime(parsed.now);
     const receipt = JSON.parse(await readFile(parsed.receipt, "utf8")) as ReceiptInput;
-    const verification = await verifyReceipt(receipt, parsed.artifact, evaluatedAt);
+    const verification = await verifyReceipt(receipt, parsed.artifact, evaluatedAt, {
+      maxScanAgeMs: policy.maxScanAgeMs,
+      clockSkewMs: policy.clockSkewMs
+    });
     const model = outputModel(policy, verification, receipt, evaluatedAt);
     if (parsed.format === "json") io.stdout(`${JSON.stringify(model, null, 2)}\n`);
     else io.stdout(renderText(model));
