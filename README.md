@@ -1,0 +1,71 @@
+# mcp-evidence-gate
+
+Experimental downstream verifier and CI policy gate for evidence-scoped MCP security scan receipts.
+
+This project is **not** an MCP Registry implementation, an official MCP project, or a scanner. It initially targets the experimental receipt proposal in [modelcontextprotocol/registry#1404](https://github.com/modelcontextprotocol/registry/pull/1404).
+
+The first compatibility profile is pinned to:
+
+```text
+registry-pr-1404@20747d3253ba8638161dd95f1cec70df02993c22
+```
+
+The verifier will answer whether a receipt is still eligible to support a release by checking artifact binding, freshness, non-empty scope, evidence integrity, inconclusive reasons, and attestation policy. It will not discover vulnerabilities or claim that a server is globally safe.
+
+The pinned profile follows the proposal's current schema boundary: `scanner`, `scanned_artifact_digest`, `scan_scope`, `verdict`, `scanned_at`, and `attestation` are required; `freshness_expires_at` is optional; `inconclusive_reason` is required only when `verdict` is `inconclusive`. Digest parsing currently supports lowercase `sha256:<64-hex>` values. Other well-formed algorithms are reported as unsupported by this verifier, not as malformed receipts. Scope values remain open strings so future upstream values are accepted.
+
+The pinned structural schema is stored at `src/profiles/registry-pr-1404/security-scan-receipt.schema.json` with provenance in the adjacent `profile.json`. `verifyReceipt()` runs structural conformance first and then evidence-specific checks. `verifyReceiptEvidence()` remains the partial invariant layer for callers that already performed structural validation.
+
+## Policy layer
+
+`evaluatePolicy()` produces a project-defined release decision without changing the input receipt. It keeps the scanner's `verdict` separate from the gate decision and uses deterministic precedence: `fail > inconclusive > warn > pass`.
+
+Two built-in policies are included:
+
+- `permissive`: freshness is optional, no scope is required, and all three attestation values are allowed.
+- `strict-release-example`: requires freshness, `package` plus `handler-validation`, and `third-party-attested`.
+
+The strict policy is a project-defined example, not an MCP Registry requirement or trust hierarchy. Policy is local and deterministic; it does not contact the Registry, download evidence, run scanners, or modify receipts.
+
+## Status
+
+Phase 1 / experimental. The profile is deliberately pinned to an open, unmerged proposal. If the proposal changes, a new profile will be added instead of silently changing existing behavior.
+
+## Development
+
+```bash
+pnpm install
+pnpm build
+pnpm test
+```
+
+No external repository, scanner, or endpoint is contacted by the current CLI or core verifier.
+
+## CLI
+
+Build the executable package and run the only command:
+
+```bash
+pnpm build
+node dist/cli.js verify \
+  --receipt fixtures/valid/complete-clean.json \
+  --artifact fixtures/artifacts/current-artifact.bin \
+  --policy permissive \
+  --now 2026-08-25T00:00:00Z
+```
+
+Use `--format json` for machine-readable output. Exit codes are stable: `0` means PASS or WARN, `1` means FAIL, `2` means INCONCLUSIVE, and `3` means CLI/input/runtime error. The policy must be explicit; no MCP Registry policy is implied.
+
+## GitHub Action
+
+The experimental Action is a thin wrapper around the same verifier and policy layer. It requires all three inputs and does not install dependencies in the consuming repository:
+
+```yaml
+- uses: yandexuanxuan/mcp-evidence-gate@<immutable-commit-sha>
+  with:
+    receipt: fixtures/valid/complete-clean.json
+    artifact: fixtures/artifacts/current-artifact.bin
+    policy: permissive
+```
+
+It emits `decision`, `receipt-verdict`, and `profile`. PASS and WARN succeed; FAIL and INCONCLUSIVE fail the step. INCONCLUSIVE means the evidence does not support the release, not that the server was proven unsafe. The checked-in `dist/action/index.cjs` is a self-contained Node 20 bundle.
