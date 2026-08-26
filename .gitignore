@@ -5,3 +5,9 @@ dist/action/*
 !dist/action/index.cjs
 coverage/
 *.log
+
+# Internal research and outreach material; keep outside the public product tree.
+/report-source.md
+/phase-0-gap-matrix-20260825.md
+/docs/outreach/mcp-registry-1404-downstream-comment-draft.md
+/docs/outreach/design-partner-outreach-20260826.md
