@@ -8,3 +8,8 @@ coverage/
 
 # Local-only outreach candidate list; keep it inside the project but out of the public tree.
 /docs/outreach/design-partner-outreach-20260826.md
+
+# Local research/application material; keep outside the public product tree.
+/report-source.md
+/phase-0-gap-matrix-20260825.md
+/docs/outreach/mcp-registry-1404-downstream-comment-draft.md
