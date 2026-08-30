@@ -26,7 +26,7 @@ export async function runAction(): Promise<void> {
     maxScanAgeMs: policy.maxScanAgeMs,
     clockSkewMs: policy.clockSkewMs
   });
-  const evaluation = evaluatePolicy(receipt, verification, policy);
+  const evaluation = evaluatePolicy(receipt, verification, policy, evaluatedAt);
 
   core.setOutput("decision", evaluation.decision);
   core.setOutput("receipt-verdict", evaluation.receiptVerdict);

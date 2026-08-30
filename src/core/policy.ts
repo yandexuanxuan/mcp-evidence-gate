@@ -1,4 +1,5 @@
 import { REGISTRY_PR_1404_PROFILE } from "../profiles/registry-pr-1404.js";
+import { evaluateFreshness } from "./freshness.js";
 import type { ReceiptInput, VerificationResult } from "./types.js";
 
 export type PolicyDecision = "pass" | "warn" | "inconclusive" | "fail";
@@ -67,7 +68,8 @@ function highestDecision(reasons: readonly PolicyReason[]): PolicyDecision {
 export function evaluatePolicy(
   receipt: ReceiptInput,
   verification: VerificationResult,
-  policy: PolicyConfig
+  policy: PolicyConfig,
+  now: Date = new Date()
 ): PolicyEvaluation {
   const reasons: PolicyReason[] = [];
   const add = (code: string, decision: PolicyDecision, detail: string) =>
@@ -103,6 +105,25 @@ export function evaluatePolicy(
     }
     if (check.status === "invalid" && check.id !== "receipt_structure") {
       add("evidence_check_invalid", "fail", `${check.id} evidence check is invalid.`);
+    }
+  }
+
+  // A policy owns its max-age rule. This second evaluation closes the library
+  // two-step API gap when callers do not forward policy freshness options to
+  // verifyReceipt(). Avoid adding a duplicate reason when verification already
+  // evaluated the same max-age constraint.
+  if (
+    policy.maxScanAgeMs !== undefined &&
+    !reasons.some((reason) => reason.code === "scan_too_old")
+  ) {
+    const policyFreshness = evaluateFreshness(receipt.freshness_expires_at, {
+      now,
+      scannedAt: receipt.scanned_at,
+      maxScanAgeMs: policy.maxScanAgeMs,
+      clockSkewMs: policy.clockSkewMs
+    });
+    if (policyFreshness.reason === "scan_too_old") {
+      add("scan_too_old", "inconclusive", "Receipt scanned_at exceeds the maximum age allowed by policy.");
     }
   }
 

@@ -82,7 +82,7 @@ function outputModel(
   receipt: ReceiptInput,
   evaluatedAt: Date
 ) {
-  const decision = evaluatePolicy(receipt, verification, policy);
+  const decision = evaluatePolicy(receipt, verification, policy, evaluatedAt);
   return {
     tool: "mcp-evidence-gate",
     version: CLI_VERSION,
