@@ -1,6 +1,6 @@
 {
   "name": "mcp-evidence-gate",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "private": true,
   "description": "Experimental downstream verifier and CI policy gate for evidence-scoped MCP security scan receipts.",
   "type": "module",

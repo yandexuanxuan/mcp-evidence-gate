@@ -76,4 +76,12 @@ It emits `decision`, `receipt-verdict`, and `profile`. PASS and WARN succeed; FA
 
 ## Tested downstream integration
 
-The companion [mcp-evidence-gate-dogfood](https://github.com/yandexuanxuan/mcp-evidence-gate-dogfood) repository runs the Action at immutable release commit `7b1569284e321976b4b61378c223ce6a28fbdb9b` (`v0.1.0-alpha.1`) and asserts PASS, INCONCLUSIVE, and FAIL cases. Consumers should pin a full commit SHA rather than a moving branch.
+The companion [mcp-evidence-gate-dogfood](https://github.com/yandexuanxuan/mcp-evidence-gate-dogfood) repository runs the Action at immutable release commit `b8cacb5eadca53c8b9a1e8d5c8ac956fd579238d` (`v0.1.0-alpha.2`) and asserts both the decision and Action outcome for each case:
+
+- matching-clean: `PASS` / successful step;
+- digest-mismatch: `INCONCLUSIVE` / failed step;
+- stale: `INCONCLUSIVE` / failed step;
+- findings: `FAIL` / failed step;
+- malformed: `FAIL` / failed step.
+
+Consumers should pin a full commit SHA rather than a moving branch.
