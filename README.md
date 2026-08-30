@@ -22,7 +22,7 @@ The pinned structural schema is stored at `src/profiles/registry-pr-1404/securit
 
 ## Policy layer
 
-`evaluatePolicy()` produces a project-defined release decision without changing the input receipt. It keeps the scanner's `verdict` separate from the gate decision and uses deterministic precedence: `fail > inconclusive > warn > pass`.
+`evaluatePolicy()` produces a project-defined release decision without changing the input receipt. It keeps the scanner's `verdict` separate from the gate decision and uses deterministic precedence: `fail > inconclusive > warn > pass`. Strict policies enforce their own `maxScanAgeMs` during policy evaluation, so library callers do not need to duplicate freshness options when using the two-step verifier/policy API.
 
 Two built-in policies are included:
 

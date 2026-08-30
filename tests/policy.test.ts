@@ -67,6 +67,32 @@ describe("deterministic policy decisions", () => {
     );
   });
 
+  it("enforces strict max age when a library caller omits freshness forwarding", async () => {
+    const { receipt } = await verifiedReceipt({
+      scanned_at: "2026-08-01T00:00:00Z",
+      freshness_expires_at: "2036-08-01T00:00:00Z",
+      scan_scope: ["package", "handler-validation"],
+      attestation: "third-party-attested"
+    });
+    const verification = await verifyReceipt(receipt, artifactPath, now);
+    const result = evaluatePolicy(receipt, verification, STRICT_RELEASE_EXAMPLE_POLICY, now);
+    expect(result).toMatchObject({ decision: "inconclusive", receiptVerdict: "clean" });
+    expect(result.reasons.filter((reason) => reason.code === "scan_too_old")).toHaveLength(1);
+    expect(receipt.verdict).toBe("clean");
+  });
+
+  it("passes a recent strict receipt without duplicated freshness forwarding", async () => {
+    const { receipt } = await verifiedReceipt({
+      freshness_expires_at: "2026-08-26T00:00:00Z",
+      scan_scope: ["package", "handler-validation"],
+      attestation: "third-party-attested"
+    });
+    const verification = await verifyReceipt(receipt, artifactPath, now);
+    const result = evaluatePolicy(receipt, verification, STRICT_RELEASE_EXAMPLE_POLICY, now);
+    expect(result).toMatchObject({ decision: "pass", receiptVerdict: "clean" });
+    expect(result.reasons).toHaveLength(0);
+  });
+
   it("makes optional freshness policy-dependent", async () => {
     const { receipt, verification } = await verifiedReceipt();
     delete receipt.freshness_expires_at;

@@ -27930,6 +27930,79 @@ var REGISTRY_PR_1404_PROFILE = {
   attestations: ["publisher-asserted", "registry-attested", "third-party-attested"]
 };
 
+// src/core/freshness.ts
+var RFC3339_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/;
+function parseStrictDateTime(value) {
+  const match = RFC3339_DATE_TIME.exec(value);
+  if (!match)
+    return void 0;
+  const [, year, month, day, hour, minute, second] = match.map(Number);
+  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59)
+    return void 0;
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth)
+    return void 0;
+  const normalized = value.replace("t", "T").replace(/z$/, "Z");
+  const parsed = Date.parse(normalized);
+  return Number.isNaN(parsed) ? void 0 : parsed;
+}
+function evaluateFreshness(expiresAt, options) {
+  if (!(options.now instanceof Date) || Number.isNaN(options.now.getTime())) {
+    throw new Error("invalid_now");
+  }
+  const now = options.now.getTime();
+  const clockSkewMs = options.clockSkewMs ?? 5 * 60 * 1e3;
+  let scannedAtMs;
+  if (options.scannedAt !== void 0) {
+    if (typeof options.scannedAt !== "string" || options.scannedAt.length === 0) {
+      return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
+    }
+    scannedAtMs = parseStrictDateTime(options.scannedAt);
+    if (scannedAtMs === void 0) {
+      return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
+    }
+    if (scannedAtMs > now + clockSkewMs) {
+      return {
+        id: "freshness",
+        status: "invalid",
+        reason: "scan_timestamp_in_future",
+        actual: options.scannedAt
+      };
+    }
+  }
+  if (expiresAt === void 0) {
+    return { id: "freshness", status: "not_present", reason: "freshness_not_declared" };
+  }
+  if (typeof expiresAt !== "string" || expiresAt.length === 0) {
+    return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
+  }
+  const expiry = parseStrictDateTime(expiresAt);
+  if (expiry === void 0) {
+    return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
+  }
+  if (scannedAtMs !== void 0 && expiry < scannedAtMs) {
+    return {
+      id: "freshness",
+      status: "invalid",
+      reason: "freshness_before_scan",
+      expected: options.scannedAt,
+      actual: expiresAt
+    };
+  }
+  if (scannedAtMs !== void 0 && options.maxScanAgeMs !== void 0 && now - scannedAtMs > options.maxScanAgeMs) {
+    return {
+      id: "freshness",
+      status: "inconclusive",
+      reason: "scan_too_old",
+      actual: options.scannedAt
+    };
+  }
+  if (expiry <= now) {
+    return { id: "freshness", status: "inconclusive", reason: "stale_scan", actual: expiresAt };
+  }
+  return { id: "freshness", status: "pass", actual: expiresAt };
+}
+
 // src/core/policy.ts
 var PERMISSIVE_POLICY = {
   name: "permissive",
@@ -27965,7 +28038,7 @@ function highestDecision(reasons) {
     "pass"
   );
 }
-function evaluatePolicy(receipt, verification, policy) {
+function evaluatePolicy(receipt, verification, policy, now = /* @__PURE__ */ new Date()) {
   const reasons = [];
   const add = (code, decision, detail) => reasons.push({ code, decision, detail });
   const structure = verification.checks.find((check) => check.id === "receipt_structure");
@@ -27995,6 +28068,17 @@ function evaluatePolicy(receipt, verification, policy) {
     }
     if (check.status === "invalid" && check.id !== "receipt_structure") {
       add("evidence_check_invalid", "fail", `${check.id} evidence check is invalid.`);
+    }
+  }
+  if (policy.maxScanAgeMs !== void 0 && !reasons.some((reason) => reason.code === "scan_too_old")) {
+    const policyFreshness = evaluateFreshness(receipt.freshness_expires_at, {
+      now,
+      scannedAt: receipt.scanned_at,
+      maxScanAgeMs: policy.maxScanAgeMs,
+      clockSkewMs: policy.clockSkewMs
+    });
+    if (policyFreshness.reason === "scan_too_old") {
+      add("scan_too_old", "inconclusive", "Receipt scanned_at exceeds the maximum age allowed by policy.");
     }
   }
   const freshness = verification.checks.find((check) => check.id === "freshness");
@@ -28081,79 +28165,6 @@ async function verifyArtifactBinding(receiptDigest, artifactPath) {
     expected: `sha256:${expected.hex}`,
     actual
   };
-}
-
-// src/core/freshness.ts
-var RFC3339_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/;
-function parseStrictDateTime(value) {
-  const match = RFC3339_DATE_TIME.exec(value);
-  if (!match)
-    return void 0;
-  const [, year, month, day, hour, minute, second] = match.map(Number);
-  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59)
-    return void 0;
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  if (day < 1 || day > daysInMonth)
-    return void 0;
-  const normalized = value.replace("t", "T").replace(/z$/, "Z");
-  const parsed = Date.parse(normalized);
-  return Number.isNaN(parsed) ? void 0 : parsed;
-}
-function evaluateFreshness(expiresAt, options) {
-  if (!(options.now instanceof Date) || Number.isNaN(options.now.getTime())) {
-    throw new Error("invalid_now");
-  }
-  const now = options.now.getTime();
-  const clockSkewMs = options.clockSkewMs ?? 5 * 60 * 1e3;
-  let scannedAtMs;
-  if (options.scannedAt !== void 0) {
-    if (typeof options.scannedAt !== "string" || options.scannedAt.length === 0) {
-      return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
-    }
-    scannedAtMs = parseStrictDateTime(options.scannedAt);
-    if (scannedAtMs === void 0) {
-      return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
-    }
-    if (scannedAtMs > now + clockSkewMs) {
-      return {
-        id: "freshness",
-        status: "invalid",
-        reason: "scan_timestamp_in_future",
-        actual: options.scannedAt
-      };
-    }
-  }
-  if (expiresAt === void 0) {
-    return { id: "freshness", status: "not_present", reason: "freshness_not_declared" };
-  }
-  if (typeof expiresAt !== "string" || expiresAt.length === 0) {
-    return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
-  }
-  const expiry = parseStrictDateTime(expiresAt);
-  if (expiry === void 0) {
-    return { id: "freshness", status: "invalid", reason: "malformed_timestamp" };
-  }
-  if (scannedAtMs !== void 0 && expiry < scannedAtMs) {
-    return {
-      id: "freshness",
-      status: "invalid",
-      reason: "freshness_before_scan",
-      expected: options.scannedAt,
-      actual: expiresAt
-    };
-  }
-  if (scannedAtMs !== void 0 && options.maxScanAgeMs !== void 0 && now - scannedAtMs > options.maxScanAgeMs) {
-    return {
-      id: "freshness",
-      status: "inconclusive",
-      reason: "scan_too_old",
-      actual: options.scannedAt
-    };
-  }
-  if (expiry <= now) {
-    return { id: "freshness", status: "inconclusive", reason: "stale_scan", actual: expiresAt };
-  }
-  return { id: "freshness", status: "pass", actual: expiresAt };
 }
 
 // src/core/inconclusive.ts
@@ -28317,7 +28328,7 @@ async function runAction() {
     maxScanAgeMs: policy.maxScanAgeMs,
     clockSkewMs: policy.clockSkewMs
   });
-  const evaluation = evaluatePolicy(receipt, verification, policy);
+  const evaluation = evaluatePolicy(receipt, verification, policy, evaluatedAt);
   core.setOutput("decision", evaluation.decision);
   core.setOutput("receipt-verdict", evaluation.receiptVerdict);
   core.setOutput("profile", evaluation.profile);
