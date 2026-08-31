@@ -9,6 +9,9 @@ All notable changes to this project are documented here.
   and policy evidence.
 - Added CLI `verify-set` with one shared artifact/policy/evaluation clock and
   per-receipt optional local evidence binding.
+- Froze the set-level artifact SHA-256 and rechecked it after each receipt
+  evaluation so persistent cross-receipt artifact drift fails as a runtime
+  invariant violation instead of being silently composed.
 - Preserved aggregate decision precedence as
   `fail > inconclusive > warn > pass`; empty sets fail as input errors.
 - Kept the existing single-receipt GitHub Action interface and checked-in
