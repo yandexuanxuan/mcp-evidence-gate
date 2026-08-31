@@ -229,4 +229,65 @@ describe("deterministic policy decisions", () => {
     const verification = await verifyReceipt(receipt, artifactPath, now, { evidencePath: "/missing/evidence.json" });
     expect(evaluatePolicy(receipt, verification, PERMISSIVE_POLICY)).toMatchObject({ decision: "inconclusive" });
   });
+
+  describe("evidence binding policy matrix", () => {
+    it("evaluates optional and strict evidence binding matrix exhaustively", async () => {
+      const base = await fixture("valid/complete-clean.json");
+      const validEvidencePath = resolve(root, "fixtures/valid/complete-clean.json");
+      const validEvidenceDigest = sha256Bytes(await readFile(validEvidencePath));
+      const strictReceipt = {
+        ...base,
+        freshness_expires_at: "2026-08-26T00:00:00Z",
+        scan_scope: ["package", "handler-validation"],
+        attestation: "third-party-attested",
+        evidence_digest: validEvidenceDigest
+      };
+      const permissiveReceipt = { ...base, evidence_digest: validEvidenceDigest };
+      const mismatchReceipt = { ...permissiveReceipt, evidence_digest: "sha256:" + "0".repeat(64) };
+      const unsupportedReceipt = { ...permissiveReceipt, evidence_digest: "sha512:" + "0".repeat(128) };
+      const strictMismatchReceipt = { ...strictReceipt, evidence_digest: "sha256:" + "0".repeat(64) };
+
+      // optional / no evidence -> PASS
+      const optNoEvidence = await verifyReceipt(permissiveReceipt, artifactPath, now);
+      expect(evaluatePolicy(permissiveReceipt, optNoEvidence, PERMISSIVE_POLICY).decision).toBe("pass");
+
+      // optional / match -> PASS
+      const optMatch = await verifyReceipt(permissiveReceipt, artifactPath, now, { evidencePath: validEvidencePath });
+      expect(evaluatePolicy(permissiveReceipt, optMatch, PERMISSIVE_POLICY).decision).toBe("pass");
+
+      // optional / mismatch -> INCONCLUSIVE (never PASS)
+      const optMismatch = await verifyReceipt(mismatchReceipt, artifactPath, now, { evidencePath: validEvidencePath });
+      const optMismatchEval = evaluatePolicy(mismatchReceipt, optMismatch, PERMISSIVE_POLICY);
+      expect(optMismatchEval.decision).toBe("inconclusive");
+      expect(optMismatchEval.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: "evidence_digest_mismatch" })]));
+
+      // optional / missing -> INCONCLUSIVE
+      const optMissing = await verifyReceipt(permissiveReceipt, artifactPath, now, { evidencePath: "/missing/evidence.json" });
+      const optMissingEval = evaluatePolicy(permissiveReceipt, optMissing, PERMISSIVE_POLICY);
+      expect(optMissingEval.decision).toBe("inconclusive");
+      expect(optMissingEval.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: "evidence_file_missing" })]));
+
+      // optional / unsupported -> INCONCLUSIVE
+      const optUnsupported = await verifyReceipt(unsupportedReceipt, artifactPath, now, { evidencePath: validEvidencePath });
+      const optUnsupportedEval = evaluatePolicy(unsupportedReceipt, optUnsupported, PERMISSIVE_POLICY);
+      expect(optUnsupportedEval.decision).toBe("inconclusive");
+      expect(optUnsupportedEval.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: "unsupported_evidence_digest_algorithm" })]));
+
+      // strict / no evidence -> INCONCLUSIVE
+      const strictNoEvidence = await verifyReceipt(strictReceipt, artifactPath, now);
+      const strictNoEvidenceEval = evaluatePolicy(strictReceipt, strictNoEvidence, STRICT_EVIDENCE_EXAMPLE_POLICY);
+      expect(strictNoEvidenceEval.decision).toBe("inconclusive");
+      expect(strictNoEvidenceEval.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: "evidence_binding_required" })]));
+
+      // strict / match -> PASS
+      const strictMatch = await verifyReceipt(strictReceipt, artifactPath, now, { evidencePath: validEvidencePath });
+      expect(evaluatePolicy(strictReceipt, strictMatch, STRICT_EVIDENCE_EXAMPLE_POLICY).decision).toBe("pass");
+
+      // strict / mismatch -> INCONCLUSIVE
+      const strictMismatch = await verifyReceipt(strictMismatchReceipt, artifactPath, now, { evidencePath: validEvidencePath });
+      const strictMismatchEval = evaluatePolicy(strictMismatchReceipt, strictMismatch, STRICT_EVIDENCE_EXAMPLE_POLICY);
+      expect(strictMismatchEval.decision).toBe("inconclusive");
+      expect(strictMismatchEval.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: "evidence_digest_mismatch" })]));
+    });
+  });
 });

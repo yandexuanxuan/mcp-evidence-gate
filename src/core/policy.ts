@@ -118,7 +118,7 @@ export function evaluatePolicy(
           : "Receipt freshness has expired and cannot support a clean claim."
       );
     }
-    if (check.status === "invalid" && check.id !== "receipt_structure") {
+    if (check.status === "invalid" && check.id !== "receipt_structure" && check.id !== "evidence_binding") {
       add("evidence_check_invalid", "fail", `${check.id} evidence check is invalid.`);
     }
   }
@@ -143,14 +143,20 @@ export function evaluatePolicy(
   }
 
   const evidence = verification.checks.find((check) => check.id === "evidence_binding");
-  if (policy.requireEvidenceBinding) {
-    if (!evidence || evidence.status === "not_present") add("evidence_binding_required", "inconclusive", "This policy requires a locally provided evidence report bound by digest.");
-    else if (evidence.status === "mismatch") add("evidence_digest_mismatch", "inconclusive", "Evidence report digest does not bind to the receipt.");
-    else if (evidence.status === "unsupported") add("unsupported_evidence_digest_algorithm", "inconclusive", "The evidence digest algorithm is not supported by this verifier.");
-    else if (evidence.status === "invalid") add("evidence_binding_invalid", "fail", "Evidence digest binding is invalid.");
+  if (evidence) {
+    if (evidence.status === "mismatch") {
+      add("evidence_digest_mismatch", "inconclusive", "Evidence report digest does not bind to the receipt.");
+    } else if (evidence.status === "unsupported") {
+      add("unsupported_evidence_digest_algorithm", "inconclusive", "The evidence digest algorithm is not supported by this verifier.");
+    } else if (evidence.status === "not_present" && evidence.reason === "evidence_file_missing") {
+      add("evidence_file_missing", "inconclusive", "An explicitly supplied evidence report could not be read.");
+    } else if (evidence.status === "invalid") {
+      add("evidence_binding_invalid", "fail", "Evidence digest binding is invalid.");
+    }
   }
-  if (!policy.requireEvidenceBinding && evidence?.status === "not_present" && evidence.reason === "evidence_file_missing") {
-    add("evidence_file_missing", "inconclusive", "An explicitly supplied evidence report could not be read.");
+
+  if (policy.requireEvidenceBinding && (!evidence || (evidence.status === "not_present" && evidence.reason !== "evidence_file_missing"))) {
+    add("evidence_binding_required", "inconclusive", "This policy requires a locally provided evidence report bound by digest.");
   }
 
   const freshness = verification.checks.find((check) => check.id === "freshness");

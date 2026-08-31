@@ -107,6 +107,16 @@ describe("mcp-evidence-gate verify CLI", () => {
     expect(result.stdout).toContain("Evidence Binding");
   });
 
+  it("returns INCONCLUSIVE with exit 2 when explicit evidence mismatches under permissive policy", async () => {
+    const evidence = resolve(root, "fixtures/valid/complete-clean.json");
+    const result = await invoke([
+      "verify", "--receipt", receipt("complete-evidence-mismatch.json"), "--artifact", artifact,
+      "--evidence", evidence, "--policy", "permissive", "--now", now
+    ]);
+    expect(result.code).toBe(2);
+    expect(result.stdout).toContain("Decision: INCONCLUSIVE");
+  });
+
   it("supports help and version without requiring verification inputs", async () => {
     const help = await invoke(["--help"]);
     const version = await invoke(["--version"]);
