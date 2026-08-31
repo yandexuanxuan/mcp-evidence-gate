@@ -1,6 +1,5 @@
 import {
   evaluatePolicy,
-  highestPolicyDecision,
   type PolicyConfig,
   type PolicyDecision,
   type PolicyEvaluation
@@ -31,14 +30,32 @@ export interface ReceiptSetEvaluation {
   receipts: ReceiptSetEntryEvaluation[];
 }
 
+// This is the established downstream policy severity contract. It is repeated
+// here intentionally so P2-003 does not perturb the existing single-receipt
+// policy module and therefore does not rewrite the shipped Action bundle.
+const COMPOSITION_RANK: Readonly<Record<PolicyDecision, number>> = {
+  pass: 0,
+  warn: 1,
+  inconclusive: 2,
+  fail: 3
+};
+
+function highestCompositionDecision(decisions: readonly PolicyDecision[]): PolicyDecision {
+  return decisions.reduce<PolicyDecision>(
+    (current, decision) =>
+      COMPOSITION_RANK[decision] > COMPOSITION_RANK[current] ? decision : current,
+    "pass"
+  );
+}
+
 /**
  * Verify and evaluate independent receipts against one shared artifact and one
  * policy, then compose only their downstream admission decisions.
  *
  * Composition never rewrites scanner verdicts and never creates a synthetic
  * SecurityScanReceipt. Each receipt keeps its complete verification and policy
- * evidence, while the aggregate decision uses the same severity ordering as
- * single-receipt policy evaluation.
+ * evidence, while the aggregate decision uses the established severity order
+ * pass < warn < inconclusive < fail.
  */
 export async function evaluateReceiptSet(
   entries: readonly ReceiptSetEntryInput[],
@@ -82,7 +99,7 @@ export async function evaluateReceiptSet(
     policy: policy.name,
     evaluatedAt,
     receiptCount: receipts.length,
-    decision: highestPolicyDecision(receipts.map((entry) => entry.evaluation.decision)),
+    decision: highestCompositionDecision(receipts.map((entry) => entry.evaluation.decision)),
     receipts
   };
 }
