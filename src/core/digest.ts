@@ -72,3 +72,25 @@ export async function verifyArtifactBinding(
         actual
       };
 }
+
+export async function verifyEvidenceBinding(receiptDigest: unknown, evidencePath?: string): Promise<Finding> {
+  let expected: ParsedDigest;
+  try { expected = parseDigest(receiptDigest); }
+  catch (error) {
+    const code = error instanceof DigestError ? error.code : "malformed_digest";
+    if (code === "unsupported_digest_algorithm") {
+      if (!evidencePath) {
+        return { id: "evidence_binding", status: "not_present", reason: "evidence_file_not_provided" };
+      }
+      return { id: "evidence_binding", status: "unsupported", reason: code };
+    }
+    return { id: "evidence_binding", status: "invalid", reason: code };
+  }
+  if (!evidencePath) return { id: "evidence_binding", status: "not_present", reason: "evidence_file_not_provided" };
+  try {
+    const actual = await sha256Artifact(evidencePath);
+    return actual === `sha256:${expected.hex}`
+      ? { id: "evidence_binding", status: "pass", expected: actual, actual }
+      : { id: "evidence_binding", status: "mismatch", reason: "evidence_digest_mismatch", expected: `sha256:${expected.hex}`, actual };
+  } catch { return { id: "evidence_binding", status: "not_present", reason: "evidence_file_missing" }; }
+}

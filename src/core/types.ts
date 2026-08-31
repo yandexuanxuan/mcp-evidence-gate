@@ -12,6 +12,7 @@ export interface Finding {
   id:
     | "receipt_structure"
     | "artifact_binding"
+    | "evidence_binding"
     | "freshness"
     | "scan_scope"
     | "inconclusive_reason";
@@ -41,5 +42,6 @@ export interface ReceiptInput {
 
 export interface VerificationResult {
   profile: RegistryPr1404Profile["id"];
+  evaluatedAt: string;
   checks: Finding[];
 }

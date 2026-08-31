@@ -12,6 +12,9 @@ inputs:
   policy:
     description: Project-defined policy name, such as permissive or strict-release-example.
     required: true
+  evidence:
+    description: Path to an optional local evidence report matching receipt.evidence_digest.
+    required: false
 
 outputs:
   decision:

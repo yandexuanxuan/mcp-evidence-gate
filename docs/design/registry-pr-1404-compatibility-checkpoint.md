@@ -64,10 +64,20 @@ package-name custody, ownership continuity, or repository continuity. No
 `drift`/custody field, provenance input, new scan scope, or scanner-verdict
 mutation is introduced by this checkpoint.
 
-The ownership/source event series discussed on #1404 remains an external claim
-until its public data and reproduction method are independently available.
-Therefore `PROVENANCE_IMPLEMENTATION_GATE=FAIL` (deferred), while the existing
-artifact-evidence dogfood remains the supported consumer contract.
+The ownership/source event series is now publicly available at
+`https://pulsefeed.dev/evidence/name-custody.json`. A reproducibility review on
+2026-08-31 independently parsed the raw event list and recomputed 177 custody
+events, 172 distinct packages, 82 without a same-day UTC version, 95 with one,
+and type counts `repo_changed=68`, `unpublished=50`, `maintainer_changed=38`,
+`repo_removed=21`. This confirms the published summary is recomputable, but does
+not establish event correctness or authoritative coverage: the producer is an
+interested party, coverage is limited to the stated registry/npm surfaces, and
+OpenTimestamps proves manifest existence timing rather than correctness.
+
+Accordingly `PROVENANCE_IMPLEMENTATION_GATE=PROTOTYPE_READY`: a downstream
+prototype/evaluator is justified, while production trusted provenance remains
+out of scope. The existing artifact-evidence dogfood remains the supported
+consumer contract.
 
 ## Evidence references
 
@@ -85,6 +95,16 @@ artifact-evidence dogfood remains the supported consumer contract.
 - A separate real-artifact external Action run ([`33036548697`](https://github.com/yandexuanxuan/mcp-use/actions/runs/33036548697)) completed the matching-clean, digest-mismatch, and findings cases successfully.
 
 ## Unknowns and reopen conditions
+
+## 2026-08-31 downstream implementation state
+
+The historical dogfood observations above are retained unchanged. The current
+development branch adds explicit warning disposition and optional offline local
+`evidence_digest` binding. Its Action bundle is built from commit
+`f8a0b517a15896848530365f77d21482e34fdbca`; the companion dogfood branch pins
+that full SHA and adds permissive/strict warning cases. These feature branches
+are local pending authenticated push, so this is a development reference, not
+yet a public release tag.
 
 Known unknowns are whether a Registry maintainer will formally review or merge
 #1404, whether the PR will receive additional schema changes, and whether the
