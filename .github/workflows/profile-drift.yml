@@ -1,0 +1,54 @@
+name: Registry Profile Drift Sentinel
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  profile-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Check pinned Registry PR profile
+        id: sentinel
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/profile-drift-sentinel.mjs --output profile-drift-report.json
+
+      - name: Summarize profile drift result
+        if: steps.sentinel.outcome != 'skipped'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Registry Profile Drift Sentinel'
+            echo
+            echo '```json'
+            cat profile-drift-report.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload profile drift evidence
+        if: steps.sentinel.outcome != 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: profile-drift-${{ github.sha }}
+          retention-days: 90
+          if-no-files-found: error
+          path: profile-drift-report.json
+
+      - name: Fail closed on contract drift or unknown state
+        if: steps.sentinel.outcome != 'skipped'
+        env:
+          SENTINEL_OUTCOME: ${{ steps.sentinel.outcome }}
+        run: test "$SENTINEL_OUTCOME" = success
