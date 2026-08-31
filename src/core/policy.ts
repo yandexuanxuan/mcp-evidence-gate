@@ -64,17 +64,16 @@ export function policyByName(name: string): PolicyConfig {
   throw new Error(`unknown policy: ${name}`);
 }
 
-export const POLICY_DECISION_RANK: Readonly<Record<PolicyDecision, number>> = {
+const RANK: Record<PolicyDecision, number> = {
   pass: 0,
   warn: 1,
   inconclusive: 2,
   fail: 3
 };
 
-export function highestPolicyDecision(decisions: readonly PolicyDecision[]): PolicyDecision {
-  return decisions.reduce<PolicyDecision>(
-    (current, decision) =>
-      POLICY_DECISION_RANK[decision] > POLICY_DECISION_RANK[current] ? decision : current,
+function highestDecision(reasons: readonly PolicyReason[]): PolicyDecision {
+  return reasons.reduce<PolicyDecision>(
+    (current, reason) => (RANK[reason.decision] > RANK[current] ? reason.decision : current),
     "pass"
   );
 }
@@ -185,11 +184,11 @@ export function evaluatePolicy(
     add("receipt_inconclusive", "inconclusive", "Receipt verdict is inconclusive.");
   }
 
-  reasons.sort((left, right) => POLICY_DECISION_RANK[right.decision] - POLICY_DECISION_RANK[left.decision]);
+  reasons.sort((left, right) => RANK[right.decision] - RANK[left.decision]);
   return {
     policy: policy.name,
     profile: REGISTRY_PR_1404_PROFILE.id,
-    decision: highestPolicyDecision(reasons.map((reason) => reason.decision)),
+    decision: highestDecision(reasons),
     reasons,
     receiptVerdict: verdict
   };
