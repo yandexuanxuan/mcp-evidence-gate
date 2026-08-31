@@ -24,13 +24,45 @@ The pinned structural schema is stored at `src/profiles/registry-pr-1404/securit
 
 `evaluatePolicy()` produces a project-defined release decision without changing the input receipt. It keeps the scanner's `verdict` separate from the gate decision and uses deterministic precedence: `fail > inconclusive > warn > pass`. The verifier carries one immutable `evaluatedAt` clock into policy evaluation, so historical replay does not drift with wall-clock time. Warning admission is explicit: `permissive` allows warnings as `WARN`, while strict policies block them as a policy `FAIL` (`receipt_warnings_blocked`).
 
-Two built-in policies are included:
+Three built-in policies are included:
 
 - `permissive`: freshness is optional, no scope is required, and all three attestation values are allowed.
 - `strict-release-example`: a project-defined metadata policy that requires freshness, `package` plus `handler-validation`, `third-party-attested`, and a maximum scan age of seven days. It does not authenticate the attestation value.
 - `strict-evidence-example`: the strict example plus a required local evidence report digest binding.
 
-The strict policy is a project-defined example, not an MCP Registry requirement or trust hierarchy. Policy is local and deterministic; it does not contact the Registry, download evidence, run scanners, or modify receipts.
+The strict policies are project-defined examples, not MCP Registry requirements or a trust hierarchy. Policy is local and deterministic; it does not contact the Registry, download evidence, run scanners, or modify receipts.
+
+## Multi-receipt composition
+
+`evaluateReceiptSet()` and the CLI `verify-set` command compose **downstream admission decisions**, not scanner receipts. Each receipt is independently verified and evaluated against one shared artifact, one policy, and one evaluation time. The aggregate decision uses the same severity order as the single-receipt policy layer:
+
+```text
+pass < warn < inconclusive < fail
+```
+
+No synthetic `SecurityScanReceipt` is created, scanner verdicts are not rewritten, and duplicate scanners do not create quorum or additional trust.
+
+A receipt-set manifest is explicitly project-defined:
+
+```json
+{
+  "schema_version": "project-defined-receipt-set-v1",
+  "receipts": [
+    {
+      "id": "trivy",
+      "receipt": "trivy/receipt.json",
+      "evidence": "trivy/evidence.json"
+    },
+    {
+      "id": "osv",
+      "receipt": "osv/receipt.json",
+      "evidence": "osv/evidence.json"
+    }
+  ]
+}
+```
+
+Receipt and evidence paths are resolved relative to the manifest file. The artifact is supplied once to `verify-set`, forcing every receipt through independent binding against the same consumer-owned artifact. An empty set is rejected as input error rather than treated as PASS. See [`docs/design/multi-receipt-composition.md`](docs/design/multi-receipt-composition.md) for the frozen P2-003 semantics and boundaries.
 
 ## Status
 
@@ -48,7 +80,7 @@ No external repository, scanner, or endpoint is contacted by the current CLI or 
 
 ## CLI
 
-Build the executable package and run the only command:
+Build the executable package and verify one receipt:
 
 ```bash
 pnpm build
@@ -59,11 +91,22 @@ node dist/cli.js verify \
   --now 2026-08-25T00:00:00Z
 ```
 
-Use `--format json` for machine-readable output. Exit codes are stable: `0` means PASS or WARN, `1` means FAIL, `2` means INCONCLUSIVE, and `3` means CLI/input/runtime error. The policy must be explicit; no MCP Registry policy is implied.
+Or compose a project-defined receipt set:
+
+```bash
+node dist/cli.js verify-set \
+  --set receipt-set.json \
+  --artifact path/to/artifact \
+  --policy permissive \
+  --format json \
+  --now 2026-08-25T00:00:00Z
+```
+
+Use `--format json` for machine-readable output. Exit codes are stable for both commands: `0` means PASS or WARN, `1` means FAIL, `2` means INCONCLUSIVE, and `3` means CLI/input/runtime error. The policy must be explicit; no MCP Registry policy is implied.
 
 ## GitHub Action
 
-The experimental Action is a thin wrapper around the same verifier and policy layer. It runs on the Node 24 GitHub Actions runtime, requires receipt, artifact, and policy inputs, and accepts an optional local `evidence` path. It does not install dependencies or download `evidence_ref` in the consuming repository:
+The experimental Action remains a thin **single-receipt** wrapper around the existing verifier and policy layer. It runs on the Node 24 GitHub Actions runtime, requires receipt, artifact, and policy inputs, and accepts an optional local `evidence` path. P2-003 does not change the Action input surface. It does not install dependencies or download `evidence_ref` in the consuming repository:
 
 ```yaml
 - uses: yandexuanxuan/mcp-evidence-gate@<immutable-commit-sha>
@@ -77,12 +120,6 @@ It emits `decision`, `receipt-verdict`, and `profile`. PASS and policy-allowed W
 
 ## Tested downstream integration
 
-The companion [mcp-evidence-gate-dogfood](https://github.com/yandexuanxuan/mcp-evidence-gate-dogfood) exercises the Action across its decision and step outcome matrix using immutable commit references. The historical `v0.1.0-alpha.2` release was validated at commit `b8cacb5eadca53c8b9a1e8d5c8ac956fd579238d`.
-
-- matching-clean: `PASS` / successful step;
-- digest-mismatch: `INCONCLUSIVE` / failed step;
-- stale: `INCONCLUSIVE` / failed step;
-- findings: `FAIL` / failed step;
-- malformed: `FAIL` / failed step.
+The companion [mcp-evidence-gate-dogfood](https://github.com/yandexuanxuan/mcp-evidence-gate-dogfood) exercises the Action across its decision and step outcome matrix using immutable commit references and also hosts real producer-consumer promotion oracles. P2-003 requires a downstream real Trivy + OSV receipt-set composition run before the multi-receipt feature is considered fully closed.
 
 Consumers should pin a full commit SHA rather than a moving branch.
