@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { evaluateReceiptSet } from "./core/composition.js";
 import { evaluatePolicy, policyByName, type PolicyConfig } from "./core/policy.js";
 import { verifyReceipt } from "./core/verify.js";
 import type { ReceiptInput, VerificationResult } from "./core/types.js";
@@ -13,13 +14,33 @@ export interface CliIO {
   stderr: (text: string) => void;
 }
 
-interface VerifyArgs {
-  receipt: string;
+interface CommonArgs {
   artifact: string;
   policy: string;
   format: "text" | "json";
   now?: string;
+}
+
+interface VerifyArgs extends CommonArgs {
+  command: "verify";
+  receipt: string;
   evidence?: string;
+}
+
+interface VerifySetArgs extends CommonArgs {
+  command: "verify-set";
+  set: string;
+}
+
+interface ReceiptSetManifestEntry {
+  receipt: string;
+  evidence?: string;
+  id?: string;
+}
+
+interface ReceiptSetManifest {
+  schema_version: "project-defined-receipt-set-v1";
+  receipts: ReceiptSetManifestEntry[];
 }
 
 class CliInputError extends Error {}
@@ -28,16 +49,22 @@ const HELP = `mcp-evidence-gate ${CLI_VERSION}
 
 Usage:
   mcp-evidence-gate verify --receipt <path> --artifact <path> --policy <name> [options]
+  mcp-evidence-gate verify-set --set <path> --artifact <path> --policy <name> [options]
 
 Options:
-  --receipt <path>   Receipt JSON path (required)
-  --artifact <path>  Artifact path (required)
+  --receipt <path>   Receipt JSON path for verify
+  --set <path>       Project-defined receipt-set JSON path for verify-set
+  --artifact <path>  Artifact path shared by all receipts (required)
   --policy <name>    permissive, strict-release-example, or strict-evidence-example (required)
-  --evidence <path>  Optional local evidence report for evidence_digest binding
+  --evidence <path>  Optional local evidence report for single-receipt evidence_digest binding
   --format <mode>    text or json (default: text)
   --now <RFC3339>    Evaluation time; defaults to the current time
   --help             Show this help
   --version          Show the version
+
+Receipt-set schema:
+  {"schema_version":"project-defined-receipt-set-v1","receipts":[{"receipt":"receipt.json","evidence":"evidence.json","id":"optional"}]}
+  Receipt and evidence paths are resolved relative to the receipt-set file.
 
 Exit codes:
   0  PASS or WARN
@@ -46,31 +73,91 @@ Exit codes:
   3  CLI, input, or runtime error
 `;
 
-function parseArgs(argv: string[]): VerifyArgs | "help" | "version" {
+function parseCommonOption(
+  values: Partial<CommonArgs>,
+  flag: string,
+  value: string
+): boolean {
+  if (flag === "--artifact") values.artifact = value;
+  else if (flag === "--policy") values.policy = value;
+  else if (flag === "--format" && (value === "text" || value === "json")) values.format = value;
+  else if (flag === "--now") values.now = value;
+  else return false;
+  return true;
+}
+
+function parseArgs(argv: string[]): VerifyArgs | VerifySetArgs | "help" | "version" {
   if (argv.includes("--help") || argv.length === 0) return "help";
   if (argv.includes("--version")) return "version";
-  if (argv[0] !== "verify") throw new CliInputError("only the 'verify' command is available");
+  const command = argv[0];
+  if (command !== "verify" && command !== "verify-set") {
+    throw new CliInputError("command must be 'verify' or 'verify-set'");
+  }
 
-  const values: Partial<VerifyArgs> = { format: "text" };
+  const common: Partial<CommonArgs> = { format: "text" };
+  let receipt: string | undefined;
+  let evidence: string | undefined;
+  let set: string | undefined;
+
   for (let index = 1; index < argv.length; index += 1) {
     const flag = argv[index];
     if (!flag.startsWith("--")) throw new CliInputError(`unexpected argument: ${flag}`);
     const value = argv[index + 1];
     if (value === undefined || value.startsWith("--")) throw new CliInputError(`missing value for ${flag}`);
     index += 1;
-    if (flag === "--receipt") values.receipt = value;
-    else if (flag === "--artifact") values.artifact = value;
-    else if (flag === "--policy") values.policy = value;
-    else if (flag === "--format" && (value === "text" || value === "json")) values.format = value;
-    else if (flag === "--now") values.now = value;
-    else if (flag === "--evidence") values.evidence = value;
-    else throw new CliInputError(`unknown option: ${flag}`);
+
+    if (parseCommonOption(common, flag, value)) continue;
+    if (command === "verify" && flag === "--receipt") receipt = value;
+    else if (command === "verify" && flag === "--evidence") evidence = value;
+    else if (command === "verify-set" && flag === "--set") set = value;
+    else throw new CliInputError(`unknown option for ${command}: ${flag}`);
   }
 
-  if (!values.receipt || !values.artifact || !values.policy) {
-    throw new CliInputError("--receipt, --artifact, and --policy are required");
+  if (!common.artifact || !common.policy) {
+    throw new CliInputError("--artifact and --policy are required");
   }
-  return values as VerifyArgs;
+  if (command === "verify") {
+    if (!receipt) throw new CliInputError("--receipt is required for verify");
+    return { command, receipt, evidence, ...common } as VerifyArgs;
+  }
+  if (!set) throw new CliInputError("--set is required for verify-set");
+  return { command, set, ...common } as VerifySetArgs;
+}
+
+function parseReceiptSetManifest(value: unknown): ReceiptSetManifest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new CliInputError("receipt set must be a JSON object");
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate.schema_version !== "project-defined-receipt-set-v1") {
+    throw new CliInputError("unsupported receipt-set schema_version");
+  }
+  if (!Array.isArray(candidate.receipts) || candidate.receipts.length === 0) {
+    throw new CliInputError("receipt set must contain at least one receipt");
+  }
+
+  const receipts = candidate.receipts.map((entry, index): ReceiptSetManifestEntry => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new CliInputError(`receipt set entry ${index} must be an object`);
+    }
+    const item = entry as Record<string, unknown>;
+    if (typeof item.receipt !== "string" || item.receipt.length === 0) {
+      throw new CliInputError(`receipt set entry ${index} requires receipt`);
+    }
+    if (item.evidence !== undefined && (typeof item.evidence !== "string" || item.evidence.length === 0)) {
+      throw new CliInputError(`receipt set entry ${index} evidence must be a non-empty string`);
+    }
+    if (item.id !== undefined && (typeof item.id !== "string" || item.id.length === 0)) {
+      throw new CliInputError(`receipt set entry ${index} id must be a non-empty string`);
+    }
+    return {
+      receipt: item.receipt,
+      ...(typeof item.evidence === "string" ? { evidence: item.evidence } : {}),
+      ...(typeof item.id === "string" ? { id: item.id } : {})
+    };
+  });
+
+  return { schema_version: "project-defined-receipt-set-v1", receipts };
 }
 
 function evaluationTime(value: string | undefined): Date {
@@ -132,6 +219,39 @@ function renderText(model: ReturnType<typeof outputModel>): string {
   return `${lines.join("\n")}\n`;
 }
 
+function renderSetText(model: {
+  profile: string;
+  policy: string;
+  evaluatedAt: string;
+  artifactDigest: string;
+  receiptCount: number;
+  decision: string;
+  receipts: Array<{
+    index: number;
+    id?: string;
+    scanner: string;
+    source: string;
+    receiptVerdict: string;
+    decision: string;
+  }>;
+}): string {
+  const lines = [
+    "MCP Evidence Gate Receipt Set",
+    `Profile: ${model.profile}`,
+    `Policy: ${model.policy}`,
+    `Artifact digest: ${model.artifactDigest}`,
+    `Receipt count: ${model.receiptCount}`,
+    `Evaluated at: ${model.evaluatedAt}`,
+    "",
+    ...model.receipts.map((entry) =>
+      `#${entry.index + 1}${entry.id ? ` [${entry.id}]` : ""} ${entry.scanner} ${entry.receiptVerdict.toUpperCase()} -> ${entry.decision.toUpperCase()} (${entry.source})`
+    ),
+    "",
+    `Decision: ${model.decision.toUpperCase()}`
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
 export async function runCli(argv: string[], io: CliIO): Promise<number> {
   try {
     const parsed = parseArgs(argv);
@@ -146,15 +266,57 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
 
     const policy = policyByName(parsed.policy);
     const evaluatedAt = evaluationTime(parsed.now);
-    const receipt = JSON.parse(await readFile(parsed.receipt, "utf8")) as ReceiptInput;
-    const verification = await verifyReceipt(receipt, parsed.artifact, evaluatedAt, {
-      maxScanAgeMs: policy.maxScanAgeMs,
-      clockSkewMs: policy.clockSkewMs,
-      evidencePath: parsed.evidence
-    });
-    const model = outputModel(policy, verification, receipt, evaluatedAt);
+
+    if (parsed.command === "verify") {
+      const receipt = JSON.parse(await readFile(parsed.receipt, "utf8")) as ReceiptInput;
+      const verification = await verifyReceipt(receipt, parsed.artifact, evaluatedAt, {
+        maxScanAgeMs: policy.maxScanAgeMs,
+        clockSkewMs: policy.clockSkewMs,
+        evidencePath: parsed.evidence
+      });
+      const model = outputModel(policy, verification, receipt, evaluatedAt);
+      if (parsed.format === "json") io.stdout(`${JSON.stringify(model, null, 2)}\n`);
+      else io.stdout(renderText(model));
+      return exitCode(model.decision);
+    }
+
+    const setPath = resolve(parsed.set);
+    const manifest = parseReceiptSetManifest(JSON.parse(await readFile(setPath, "utf8")));
+    const setDirectory = dirname(setPath);
+    const entries = [];
+    for (const item of manifest.receipts) {
+      const receiptPath = resolve(setDirectory, item.receipt);
+      entries.push({
+        receipt: JSON.parse(await readFile(receiptPath, "utf8")) as ReceiptInput,
+        ...(item.evidence ? { evidencePath: resolve(setDirectory, item.evidence) } : {}),
+        ...(item.id ? { id: item.id } : {})
+      });
+    }
+
+    const evaluation = await evaluateReceiptSet(entries, parsed.artifact, evaluatedAt, policy);
+    const model = {
+      tool: "mcp-evidence-gate",
+      version: CLI_VERSION,
+      mode: "receipt-set",
+      profile: evaluation.profile,
+      policy: evaluation.policy,
+      evaluatedAt: evaluation.evaluatedAt,
+      artifactDigest: evaluation.artifactDigest,
+      receiptCount: evaluation.receiptCount,
+      decision: evaluation.decision,
+      receipts: evaluation.receipts.map((entry) => ({
+        index: entry.index,
+        ...(entry.id ? { id: entry.id } : {}),
+        scanner: entry.scanner,
+        source: manifest.receipts[entry.index].receipt,
+        receiptVerdict: entry.evaluation.receiptVerdict,
+        decision: entry.evaluation.decision,
+        checks: entry.verification.checks,
+        reasons: entry.evaluation.reasons
+      }))
+    };
     if (parsed.format === "json") io.stdout(`${JSON.stringify(model, null, 2)}\n`);
-    else io.stdout(renderText(model));
+    else io.stdout(renderSetText(model));
     return exitCode(model.decision);
   } catch (error) {
     io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
