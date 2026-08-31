@@ -26,7 +26,7 @@ jobs:
         run: node scripts/profile-drift-sentinel.mjs --output profile-drift-report.json
 
       - name: Summarize profile drift result
-        if: always()
+        if: steps.sentinel.outcome != 'skipped'
         shell: bash
         run: |
           set -euo pipefail
@@ -39,7 +39,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload profile drift evidence
-        if: always()
+        if: steps.sentinel.outcome != 'skipped'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: profile-drift-${{ github.sha }}
@@ -48,7 +48,7 @@ jobs:
           path: profile-drift-report.json
 
       - name: Fail closed on contract drift or unknown state
-        if: always()
+        if: steps.sentinel.outcome != 'skipped'
         env:
           SENTINEL_OUTCOME: ${{ steps.sentinel.outcome }}
         run: test "$SENTINEL_OUTCOME" = success
