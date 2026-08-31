@@ -28106,6 +28106,9 @@ function evaluatePolicy(receipt, verification, policy, _now) {
     else if (evidence.status === "invalid")
       add("evidence_binding_invalid", "fail", "Evidence digest binding is invalid.");
   }
+  if (!policy.requireEvidenceBinding && evidence?.status === "not_present" && evidence.reason === "evidence_file_missing") {
+    add("evidence_file_missing", "inconclusive", "An explicitly supplied evidence report could not be read.");
+  }
   const freshness = verification.checks.find((check) => check.id === "freshness");
   if (policy.requireFreshness && freshness?.status === "not_present") {
     add("freshness_required", "fail", "This policy requires freshness_expires_at to be declared.");
