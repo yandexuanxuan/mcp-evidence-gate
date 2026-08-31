@@ -8,6 +8,7 @@ import { runCli } from "../src/cli.js";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const artifact = resolve(root, "fixtures/artifacts/current-artifact.bin");
 const receipt = (name: string) => resolve(root, "fixtures/valid", name);
+const artifactDigest = "sha256:41f89c83905a2335098d6acf5a8fe9e490ee2b4747229e46349cfdf4e3973c78";
 const now = "2026-08-25T00:00:00Z";
 
 async function invoke(args: string[]) {
@@ -64,6 +65,7 @@ describe("mcp-evidence-gate verify-set CLI", () => {
         expect(result.stderr).toBe("");
         expect(model).toMatchObject({
           mode: "receipt-set",
+          artifactDigest,
           receiptCount: 2,
           decision: "fail"
         });
@@ -102,6 +104,7 @@ describe("mcp-evidence-gate verify-set CLI", () => {
         expect(result.code).toBe(0);
         expect(result.stderr).toBe("");
         expect(result.stdout).toContain("MCP Evidence Gate Receipt Set");
+        expect(result.stdout).toContain(`Artifact digest: ${artifactDigest}`);
         expect(result.stdout).toContain("Decision: WARN");
       }
     );
