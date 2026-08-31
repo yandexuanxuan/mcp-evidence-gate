@@ -31,7 +31,7 @@ function classify(current, overrides = {}) {
   });
 }
 
-test('documentation-only generated component edits do not change the contract', () => {
+test('documentation-only generated component edits do not change the contract when source is unchanged', () => {
   const current = structuredClone(base);
   current.description = 'new docs';
   current.properties.scanner.description = 'new scanner docs';
@@ -89,28 +89,41 @@ test('upstream component schema identity changes are contract changes', () => {
   assert.equal(result.safe, false);
 });
 
-test('source component change without generated component change fails closed', () => {
+test('any source component change requires review even when generated component is unchanged', () => {
   const result = classify(structuredClone(base), {
     pinnedSourceComponent: '    SecurityScanReceipt:\n      type: object\n',
-    currentSourceComponent: '    SecurityScanReceipt:\n      type: object\n      required: [scanner]\n',
+    currentSourceComponent: '    SecurityScanReceipt:\n      type: object\n      description: changed\n',
   });
-  assert.equal(result.status, 'SOURCE_GENERATION_MISMATCH');
+  assert.equal(result.status, 'SOURCE_COMPONENT_CHANGE');
   assert.equal(result.safe, false);
   assert.equal(result.sourceComponentChanged, true);
   assert.equal(result.componentContentChanged, false);
+  assert.equal(actionForStatus(result.status, result.safe), 'STOP_AND_REVIEW_UPSTREAM_SOURCE_COMPONENT');
 });
 
-test('source and generated documentation changes can remain non-contract', () => {
+test('source and generated documentation changes still require source review', () => {
   const current = structuredClone(base);
   current.description = 'new docs';
   const result = classify(current, {
     pinnedSourceComponent: '    SecurityScanReceipt:\n      description: old\n',
     currentSourceComponent: '    SecurityScanReceipt:\n      description: new\n',
   });
-  assert.equal(result.status, 'NON_CONTRACT_CHANGE');
-  assert.equal(result.safe, true);
+  assert.equal(result.status, 'SOURCE_COMPONENT_CHANGE');
+  assert.equal(result.safe, false);
   assert.equal(result.sourceComponentChanged, true);
   assert.equal(result.componentContentChanged, true);
+});
+
+test('explicit generated contract drift takes precedence over source review classification', () => {
+  const current = structuredClone(base);
+  current.required.push('scanned_artifact_digest');
+  const result = classify(current, {
+    pinnedSourceComponent: '    SecurityScanReceipt:\n      required: [scanner]\n',
+    currentSourceComponent: '    SecurityScanReceipt:\n      required: [scanner, scanned_artifact_digest]\n',
+  });
+  assert.equal(result.status, 'CONTRACT_CHANGE');
+  assert.equal(result.safe, false);
+  assert.equal(result.sourceComponentChanged, true);
 });
 
 test('local schema mismatch fails closed before interpreting upstream drift', () => {
