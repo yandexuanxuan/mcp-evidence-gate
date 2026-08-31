@@ -34,6 +34,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Test profile drift classifier
+        run: pnpm test:profile-drift
+
       - name: Build package
         run: pnpm build
 
@@ -47,3 +50,25 @@ jobs:
           --artifact fixtures/artifacts/current-artifact.bin
           --policy permissive
           --now 2026-08-25T00:00:00Z
+
+      - name: Check live upstream profile drift
+        id: profile_drift
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/profile-drift-sentinel.mjs --output profile-drift-report.json
+
+      - name: Upload profile drift evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: profile-drift-${{ github.sha }}
+          retention-days: 90
+          if-no-files-found: error
+          path: profile-drift-report.json
+
+      - name: Enforce profile drift result
+        if: always()
+        env:
+          DRIFT_OUTCOME: ${{ steps.profile_drift.outcome }}
+        run: test "$DRIFT_OUTCOME" = success
