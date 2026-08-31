@@ -58,6 +58,10 @@ export function sha256Json(value) {
   return createHash('sha256').update(stableStringify(value)).digest('hex');
 }
 
+export function sha256Text(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 export function extractGeneratedComponent(schema, component = COMPONENT) {
   const definition = schema?.definitions?.[component];
   if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
@@ -66,12 +70,40 @@ export function extractGeneratedComponent(schema, component = COMPONENT) {
   return definition;
 }
 
+export function extractYamlComponentBlock(source, component = COMPONENT) {
+  const lines = source.replaceAll('\r\n', '\n').split('\n');
+  const header = new RegExp(`^(\\s*)${component}:\\s*(?:#.*)?$`);
+  const start = lines.findIndex((line) => header.test(line));
+  if (start === -1) throw new Error(`OpenAPI source is missing component ${component}`);
+
+  const match = lines[start].match(header);
+  const indent = match?.[1] ?? '';
+  const sibling = new RegExp(`^${indent}[^\\s#][^:]*:\\s*(?:#.*)?$`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
+    if (sibling.test(line)) {
+      end = index;
+      break;
+    }
+  }
+
+  return `${lines
+    .slice(start, end)
+    .map((line) => line.replace(/\s+$/u, ''))
+    .join('\n')}
+`;
+}
+
 export function classifyDrift({
   pinnedHeadSha,
   currentHeadSha,
   localComponent,
   pinnedUpstreamComponent,
   currentUpstreamComponent,
+  pinnedSourceComponent,
+  currentSourceComponent,
 }) {
   // The local schema is a standalone compatibility artifact and therefore has
   // its own root $id/$schema wrapper. Strip only those local root identities.
@@ -86,48 +118,42 @@ export function classifyDrift({
   const currentContractHash = sha256Json(currentContract);
   const pinnedFullHash = sha256Json(pinnedUpstreamComponent);
   const currentFullHash = sha256Json(currentUpstreamComponent);
+  const pinnedSourceHash = pinnedSourceComponent ? sha256Text(pinnedSourceComponent) : undefined;
+  const currentSourceHash = currentSourceComponent ? sha256Text(currentSourceComponent) : undefined;
+  const sourceComponentChanged =
+    pinnedSourceHash !== undefined && currentSourceHash !== undefined && pinnedSourceHash !== currentSourceHash;
+  const generatedComponentChanged = pinnedFullHash !== currentFullHash;
 
-  if (localContractHash !== pinnedContractHash) {
-    return {
-      status: 'LOCAL_PIN_MISMATCH',
-      safe: false,
-      localContractHash,
-      pinnedContractHash,
-      currentContractHash,
-      componentContentChanged: pinnedFullHash !== currentFullHash,
-    };
-  }
-
-  if (pinnedHeadSha === currentHeadSha) {
-    return {
-      status: 'NO_CHANGE',
-      safe: true,
-      localContractHash,
-      pinnedContractHash,
-      currentContractHash,
-      componentContentChanged: false,
-    };
-  }
-
-  if (pinnedContractHash === currentContractHash) {
-    return {
-      status: 'NON_CONTRACT_CHANGE',
-      safe: true,
-      localContractHash,
-      pinnedContractHash,
-      currentContractHash,
-      componentContentChanged: pinnedFullHash !== currentFullHash,
-    };
-  }
-
-  return {
-    status: 'CONTRACT_CHANGE',
-    safe: false,
+  const base = {
     localContractHash,
     pinnedContractHash,
     currentContractHash,
-    componentContentChanged: pinnedFullHash !== currentFullHash,
+    pinnedSourceHash,
+    currentSourceHash,
+    sourceComponentChanged,
+    componentContentChanged: generatedComponentChanged,
   };
+
+  if (localContractHash !== pinnedContractHash) {
+    return { status: 'LOCAL_PIN_MISMATCH', safe: false, ...base };
+  }
+
+  // A changed canonical OpenAPI component with a byte-equivalent generated
+  // component indicates stale generation or an unexplained source/generator
+  // relationship. Do not trust the generated contract in that state.
+  if (sourceComponentChanged && !generatedComponentChanged) {
+    return { status: 'SOURCE_GENERATION_MISMATCH', safe: false, ...base };
+  }
+
+  if (pinnedHeadSha === currentHeadSha) {
+    return { status: 'NO_CHANGE', safe: true, ...base };
+  }
+
+  if (pinnedContractHash === currentContractHash) {
+    return { status: 'NON_CONTRACT_CHANGE', safe: true, ...base };
+  }
+
+  return { status: 'CONTRACT_CHANGE', safe: false, ...base };
 }
 
 function githubHeaders() {
@@ -141,12 +167,20 @@ function githubHeaders() {
   return headers;
 }
 
-async function fetchJson(url, headers = {}) {
+async function fetchResponse(url, headers = {}) {
   const response = await fetch(url, { headers });
   if (!response.ok) {
     throw new Error(`fetch failed ${response.status} ${response.statusText}: ${url}`);
   }
-  return response.json();
+  return response;
+}
+
+async function fetchJson(url, headers = {}) {
+  return (await fetchResponse(url, headers)).json();
+}
+
+async function fetchText(url, headers = {}) {
+  return (await fetchResponse(url, headers)).text();
 }
 
 function rawUrl(repo, sha, path) {
@@ -171,34 +205,43 @@ export async function runSentinel({ outputPath } = {}) {
     throw new Error('upstream PR head repository or SHA is unavailable');
   }
 
-  const [pinnedGeneratedSchema, currentGeneratedSchema] = await Promise.all([
+  const [pinnedGeneratedSchema, currentGeneratedSchema, pinnedOpenApi, currentOpenApi] = await Promise.all([
     fetchJson(rawUrl(pinnedHeadRepository, profile.sourceHeadSha, generatedSchemaPath)),
     fetchJson(rawUrl(currentHeadRepository, currentHeadSha, generatedSchemaPath)),
+    fetchText(rawUrl(pinnedHeadRepository, profile.sourceHeadSha, profile.sourcePath)),
+    fetchText(rawUrl(currentHeadRepository, currentHeadSha, profile.sourcePath)),
   ]);
 
   const pinnedUpstreamComponent = extractGeneratedComponent(pinnedGeneratedSchema);
   const currentUpstreamComponent = extractGeneratedComponent(currentGeneratedSchema);
+  const pinnedSourceComponent = extractYamlComponentBlock(pinnedOpenApi);
+  const currentSourceComponent = extractYamlComponentBlock(currentOpenApi);
   const classification = classifyDrift({
     pinnedHeadSha: profile.sourceHeadSha,
     currentHeadSha,
     localComponent,
     pinnedUpstreamComponent,
     currentUpstreamComponent,
+    pinnedSourceComponent,
+    currentSourceComponent,
   });
 
   const report = {
     schema_version: 'profile-drift-report-v1',
     source: `${profile.sourceRepository}#${profile.sourcePullRequest}`,
     component: profile.sourceComponent,
+    source_path: profile.sourcePath,
     generated_schema_path: generatedSchemaPath,
     pinned: {
       head_repository: pinnedHeadRepository,
       head_sha: profile.sourceHeadSha,
+      source_component_sha256: classification.pinnedSourceHash,
       contract_sha256: classification.pinnedContractHash,
     },
     current: {
       head_repository: currentHeadRepository,
       head_sha: currentHeadSha,
+      source_component_sha256: classification.currentSourceHash,
       contract_sha256: classification.currentContractHash,
     },
     local: {
@@ -208,7 +251,8 @@ export async function runSentinel({ outputPath } = {}) {
     },
     status: classification.status,
     safe_to_continue_with_pinned_profile: classification.safe,
-    upstream_component_content_changed: classification.componentContentChanged,
+    upstream_source_component_changed: classification.sourceComponentChanged,
+    upstream_generated_component_changed: classification.componentContentChanged,
     action:
       classification.safe
         ? 'KEEP_PINNED_PROFILE'
