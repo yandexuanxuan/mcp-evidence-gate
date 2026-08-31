@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- Added project-defined multi-receipt admission composition through
+  `evaluateReceiptSet()` while preserving each receipt's independent verifier
+  and policy evidence.
+- Added CLI `verify-set` with one shared artifact/policy/evaluation clock and
+  per-receipt optional local evidence binding.
+- Preserved aggregate decision precedence as
+  `fail > inconclusive > warn > pass`; empty sets fail as input errors.
+- Kept the existing single-receipt GitHub Action interface and checked-in
+  Action bundle unchanged.
+
 ## [0.1.0-alpha.3] - 2026-08-31
 - Preserved one deterministic verifier evaluation clock through policy replay
   to eliminate wall-clock drift.
