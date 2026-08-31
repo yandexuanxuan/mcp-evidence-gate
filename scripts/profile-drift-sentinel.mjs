@@ -92,8 +92,7 @@ export function extractYamlComponentBlock(source, component = COMPONENT) {
   return `${lines
     .slice(start, end)
     .map((line) => line.replace(/\s+$/u, ''))
-    .join('\n')}
-`;
+    .join('\n')}\n`;
 }
 
 export function classifyDrift({
@@ -156,6 +155,34 @@ export function classifyDrift({
   return { status: 'CONTRACT_CHANGE', safe: false, ...base };
 }
 
+export function enforceUpstreamLifecycle(classification, { state, mergedAt }) {
+  if (!classification.safe) return classification;
+  if (state !== 'open' || mergedAt) {
+    return {
+      ...classification,
+      status: 'UPSTREAM_LIFECYCLE_CHANGE',
+      safe: false,
+    };
+  }
+  return classification;
+}
+
+export function actionForStatus(status, safe) {
+  if (safe) return 'KEEP_PINNED_PROFILE';
+  switch (status) {
+    case 'LOCAL_PIN_MISMATCH':
+      return 'STOP_AND_RECONCILE_PINNED_PROFILE';
+    case 'SOURCE_GENERATION_MISMATCH':
+      return 'STOP_AND_INVESTIGATE_UPSTREAM_SOURCE_GENERATION';
+    case 'UPSTREAM_LIFECYCLE_CHANGE':
+      return 'STOP_AND_REVIEW_UPSTREAM_LIFECYCLE_TRANSITION';
+    case 'CONTRACT_CHANGE':
+      return 'STOP_AND_REVIEW_VERSIONED_PROFILE_UPDATE';
+    default:
+      return 'STOP_AND_INVESTIGATE_SENTINEL_FAILURE';
+  }
+}
+
 function githubHeaders() {
   const headers = {
     Accept: 'application/vnd.github+json',
@@ -216,7 +243,7 @@ export async function runSentinel({ outputPath } = {}) {
   const currentUpstreamComponent = extractGeneratedComponent(currentGeneratedSchema);
   const pinnedSourceComponent = extractYamlComponentBlock(pinnedOpenApi);
   const currentSourceComponent = extractYamlComponentBlock(currentOpenApi);
-  const classification = classifyDrift({
+  const schemaClassification = classifyDrift({
     pinnedHeadSha: profile.sourceHeadSha,
     currentHeadSha,
     localComponent,
@@ -224,6 +251,10 @@ export async function runSentinel({ outputPath } = {}) {
     currentUpstreamComponent,
     pinnedSourceComponent,
     currentSourceComponent,
+  });
+  const classification = enforceUpstreamLifecycle(schemaClassification, {
+    state: pr?.state,
+    mergedAt: pr?.merged_at,
   });
 
   const report = {
@@ -241,6 +272,8 @@ export async function runSentinel({ outputPath } = {}) {
     current: {
       head_repository: currentHeadRepository,
       head_sha: currentHeadSha,
+      pr_state: pr?.state,
+      merged_at: pr?.merged_at,
       source_component_sha256: classification.currentSourceHash,
       contract_sha256: classification.currentContractHash,
     },
@@ -253,10 +286,7 @@ export async function runSentinel({ outputPath } = {}) {
     safe_to_continue_with_pinned_profile: classification.safe,
     upstream_source_component_changed: classification.sourceComponentChanged,
     upstream_generated_component_changed: classification.componentContentChanged,
-    action:
-      classification.safe
-        ? 'KEEP_PINNED_PROFILE'
-        : 'STOP_AND_REVIEW_VERSIONED_PROFILE_UPDATE',
+    action: actionForStatus(classification.status, classification.safe),
   };
 
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
