@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { classifyDrift, projectContract } from './profile-drift-sentinel.mjs';
+import {
+  classifyDrift,
+  extractYamlComponentBlock,
+  projectContract,
+} from './profile-drift-sentinel.mjs';
 
 const base = {
   type: 'object',
@@ -25,7 +29,7 @@ function classify(current, overrides = {}) {
   });
 }
 
-test('documentation-only component edits do not change the contract', () => {
+test('documentation-only generated component edits do not change the contract', () => {
   const current = structuredClone(base);
   current.description = 'new docs';
   current.properties.scanner.description = 'new scanner docs';
@@ -83,12 +87,55 @@ test('upstream component schema identity changes are contract changes', () => {
   assert.equal(result.safe, false);
 });
 
+test('source component change without generated component change fails closed', () => {
+  const result = classify(structuredClone(base), {
+    pinnedSourceComponent: '    SecurityScanReceipt:\n      type: object\n',
+    currentSourceComponent: '    SecurityScanReceipt:\n      type: object\n      required: [scanner]\n',
+  });
+  assert.equal(result.status, 'SOURCE_GENERATION_MISMATCH');
+  assert.equal(result.safe, false);
+  assert.equal(result.sourceComponentChanged, true);
+  assert.equal(result.componentContentChanged, false);
+});
+
+test('source and generated documentation changes can remain non-contract', () => {
+  const current = structuredClone(base);
+  current.description = 'new docs';
+  const result = classify(current, {
+    pinnedSourceComponent: '    SecurityScanReceipt:\n      description: old\n',
+    currentSourceComponent: '    SecurityScanReceipt:\n      description: new\n',
+  });
+  assert.equal(result.status, 'NON_CONTRACT_CHANGE');
+  assert.equal(result.safe, true);
+  assert.equal(result.sourceComponentChanged, true);
+  assert.equal(result.componentContentChanged, true);
+});
+
 test('local schema mismatch fails closed before interpreting upstream drift', () => {
   const local = structuredClone(base);
   local.required = ['scanner'];
   const result = classify(structuredClone(base), { localComponent: local });
   assert.equal(result.status, 'LOCAL_PIN_MISMATCH');
   assert.equal(result.safe, false);
+});
+
+test('YAML component extraction stops at the next sibling component', () => {
+  const source = [
+    'components:',
+    '  schemas:',
+    '    SecurityScanReceipt:',
+    '      type: object  ',
+    '      properties:',
+    '        scanner:',
+    '          type: string',
+    '    ServerDetail:',
+    '      type: object',
+    '',
+  ].join('\r\n');
+  assert.equal(
+    extractYamlComponentBlock(source),
+    '    SecurityScanReceipt:\n      type: object\n      properties:\n        scanner:\n          type: string\n',
+  );
 });
 
 test('projection strips annotations but preserves semantic schema identity by default', () => {
