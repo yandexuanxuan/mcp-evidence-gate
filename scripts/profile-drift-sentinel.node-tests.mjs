@@ -66,6 +66,23 @@ test('same upstream head is NO_CHANGE after local pin verification', () => {
   assert.equal(result.safe, true);
 });
 
+test('local standalone root identity is ignored only for local pin comparison', () => {
+  const local = structuredClone(base);
+  local.$schema = 'https://json-schema.org/draft/2020-12/schema';
+  local.$id = 'https://example.test/local-compatibility-schema';
+  const result = classify(structuredClone(base), { localComponent: local });
+  assert.equal(result.status, 'NON_CONTRACT_CHANGE');
+  assert.equal(result.safe, true);
+});
+
+test('upstream component schema identity changes are contract changes', () => {
+  const current = structuredClone(base);
+  current.$id = 'https://example.test/upstream-component';
+  const result = classify(current);
+  assert.equal(result.status, 'CONTRACT_CHANGE');
+  assert.equal(result.safe, false);
+});
+
 test('local schema mismatch fails closed before interpreting upstream drift', () => {
   const local = structuredClone(base);
   local.required = ['scanner'];
@@ -74,15 +91,21 @@ test('local schema mismatch fails closed before interpreting upstream drift', ()
   assert.equal(result.safe, false);
 });
 
-test('projection strips only non-contract documentation metadata', () => {
+test('projection strips annotations but preserves semantic schema identity by default', () => {
   const projected = projectContract({
-    $schema: 'example',
-    $id: 'example-id',
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    $id: 'https://example.test/component',
     title: 'docs',
     description: 'docs',
     type: 'string',
     format: 'date-time',
     pattern: '^x$',
   });
-  assert.deepEqual(projected, { format: 'date-time', pattern: '^x$', type: 'string' });
+  assert.deepEqual(projected, {
+    $id: 'https://example.test/component',
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    format: 'date-time',
+    pattern: '^x$',
+    type: 'string',
+  });
 });
