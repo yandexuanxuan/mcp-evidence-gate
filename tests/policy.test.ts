@@ -7,6 +7,7 @@ import {
   PERMISSIVE_POLICY,
   STRICT_RELEASE_EXAMPLE_POLICY
 } from "../src/core/policy.js";
+import { STRICT_EVIDENCE_EXAMPLE_POLICY } from "../src/core/policy.js";
 import { verifyReceipt } from "../src/core/verify.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -172,7 +173,7 @@ describe("deterministic policy decisions", () => {
       expect.arrayContaining([
         expect.objectContaining({ code: "attestation_not_allowed", decision: "fail" }),
         expect.objectContaining({ code: "stale_scan", decision: "inconclusive" }),
-        expect.objectContaining({ code: "receipt_warnings", decision: "warn" })
+        expect.objectContaining({ code: "receipt_warnings_blocked", decision: "fail" })
       ])
     );
   });
@@ -182,5 +183,41 @@ describe("deterministic policy decisions", () => {
     const before = JSON.stringify(receipt);
     evaluatePolicy(receipt, verification, PERMISSIVE_POLICY);
     expect(JSON.stringify(receipt)).toBe(before);
+  });
+
+  it("keeps historical replay stable when wall clock advances", async () => {
+    const { receipt, verification } = await verifiedReceipt({ scanned_at: "2026-08-24T00:00:00Z" });
+    const first = evaluatePolicy(receipt, verification, STRICT_RELEASE_EXAMPLE_POLICY, new Date("2026-08-25T00:00:00Z"));
+    const replay = evaluatePolicy(receipt, verification, STRICT_RELEASE_EXAMPLE_POLICY, new Date("2030-01-01T00:00:00Z"));
+    expect(replay).toEqual(first);
+  });
+
+  it("makes warning blocking explicit per policy", async () => {
+    const warnings = await verifiedReceipt({ verdict: "warnings" });
+    expect(evaluatePolicy(warnings.receipt, warnings.verification, PERMISSIVE_POLICY).decision).toBe("warn");
+    expect(evaluatePolicy(warnings.receipt, warnings.verification, STRICT_RELEASE_EXAMPLE_POLICY).decision).toBe("fail");
+  });
+
+  it("binds a supplied evidence report independently from the artifact", async () => {
+    const base = await fixture("valid/complete-clean.json");
+    const receipt = { ...base, freshness_expires_at: "2026-08-26T00:00:00Z", scan_scope: ["package", "handler-validation"], attestation: "third-party-attested", evidence_digest: "sha256:1b880b4d3783f4566c1bbf1d1b8dd63ad7c69b443ad71f4ec8300287f412cb3e" };
+    const evidencePath = resolve(root, "fixtures/valid/complete-clean.json");
+    const verification = await verifyReceipt(receipt, artifactPath, now, { evidencePath });
+    expect(verification.checks).toEqual(expect.arrayContaining([expect.objectContaining({ id: "evidence_binding", status: "pass" })]));
+    expect(evaluatePolicy(receipt, verification, STRICT_EVIDENCE_EXAMPLE_POLICY).decision).toBe("pass");
+  });
+
+  it("returns inconclusive for evidence mismatch, unsupported algorithm, and omitted file", async () => {
+    const base = await fixture("valid/complete-clean.json");
+    const strictBase = { ...base, freshness_expires_at: "2026-08-26T00:00:00Z", scan_scope: ["package", "handler-validation"], attestation: "third-party-attested" };
+    const mismatch = { ...strictBase, evidence_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" };
+    const unsupported = { ...strictBase, evidence_digest: "sha512:" + "0".repeat(128) };
+    for (const receipt of [mismatch, unsupported]) {
+      const verification = await verifyReceipt(receipt, artifactPath, now, { evidencePath: resolve(root, "fixtures/valid/complete-clean.json") });
+      expect(evaluatePolicy(receipt, verification, STRICT_EVIDENCE_EXAMPLE_POLICY).decision).toBe("inconclusive");
+    }
+    const omitted = { ...strictBase, evidence_digest: "sha256:1b880b4d3783f4566c1bbf1d1b8dd63ad7c69b443ad71f4ec8300287f412cb3e" };
+    const verification = await verifyReceipt(omitted, artifactPath, now);
+    expect(evaluatePolicy(omitted, verification, STRICT_EVIDENCE_EXAMPLE_POLICY).decision).toBe("inconclusive");
   });
 });

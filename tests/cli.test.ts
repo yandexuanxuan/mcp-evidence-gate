@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
+import packageJson from "../package.json" with { type: "json" };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const artifact = resolve(root, "fixtures/artifacts/current-artifact.bin");
@@ -96,12 +97,22 @@ describe("mcp-evidence-gate verify CLI", () => {
     });
   });
 
+  it("binds a local evidence report when requested by policy", async () => {
+    const evidence = resolve(root, "fixtures/valid/complete-clean.json");
+    const result = await invoke([
+      "verify", "--receipt", receipt("complete-clean.json"), "--artifact", artifact,
+      "--evidence", evidence, "--policy", "strict-evidence-example", "--now", now
+    ]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("Evidence Binding");
+  });
+
   it("supports help and version without requiring verification inputs", async () => {
     const help = await invoke(["--help"]);
     const version = await invoke(["--version"]);
     expect(help.code).toBe(0);
     expect(help.stdout).toContain("Usage:");
     expect(version.code).toBe(0);
-    expect(version.stdout.trim()).toBe("0.1.0-alpha.1");
+    expect(version.stdout.trim()).toBe(packageJson.version);
   });
 });

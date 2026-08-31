@@ -14,7 +14,7 @@ registry-pr-1404@20747d3253ba8638161dd95f1cec70df02993c22
 
 The verifier answers whether a receipt is still eligible to support a release by checking artifact binding, freshness, non-empty scope, evidence metadata conformance, inconclusive reasons, and local attestation policy. It will not discover vulnerabilities or claim that a server is globally safe.
 
-`evidence_digest` is currently validated as receipt metadata only; this release does not hash or bind a separate evidence report. Use the artifact digest check for byte-level binding. The `attestation` value is declarative metadata, not a cryptographically authenticated issuer identity or signature.
+`evidence_digest` can optionally be bound to a local evidence report with the CLI `--evidence` option or Action `evidence` input; no network download is performed. Artifact and evidence digest binding are independent axes. The `attestation` value is declarative metadata, not a cryptographically authenticated issuer identity or signature.
 
 The pinned profile follows the proposal's current schema boundary: `scanner`, `scanned_artifact_digest`, `scan_scope`, `verdict`, `scanned_at`, and `attestation` are required; `freshness_expires_at` is optional; `inconclusive_reason` is required only when `verdict` is `inconclusive`. Digest parsing currently supports lowercase `sha256:<64-hex>` values. Other well-formed algorithms are reported as unsupported by this verifier, not as malformed receipts. Scope values remain open strings so future upstream values are accepted.
 
@@ -22,12 +22,13 @@ The pinned structural schema is stored at `src/profiles/registry-pr-1404/securit
 
 ## Policy layer
 
-`evaluatePolicy()` produces a project-defined release decision without changing the input receipt. It keeps the scanner's `verdict` separate from the gate decision and uses deterministic precedence: `fail > inconclusive > warn > pass`. Strict policies enforce their own `maxScanAgeMs` during policy evaluation, so library callers do not need to duplicate freshness options when using the two-step verifier/policy API.
+`evaluatePolicy()` produces a project-defined release decision without changing the input receipt. It keeps the scanner's `verdict` separate from the gate decision and uses deterministic precedence: `fail > inconclusive > warn > pass`. The verifier carries one immutable `evaluatedAt` clock into policy evaluation, so historical replay does not drift with wall-clock time. Warning admission is explicit: `permissive` allows warnings as `WARN`, while strict policies block them as a policy `FAIL` (`receipt_warnings_blocked`).
 
 Two built-in policies are included:
 
 - `permissive`: freshness is optional, no scope is required, and all three attestation values are allowed.
 - `strict-release-example`: a project-defined metadata policy that requires freshness, `package` plus `handler-validation`, `third-party-attested`, and a maximum scan age of seven days. It does not authenticate the attestation value.
+- `strict-evidence-example`: the strict example plus a required local evidence report digest binding.
 
 The strict policy is a project-defined example, not an MCP Registry requirement or trust hierarchy. Policy is local and deterministic; it does not contact the Registry, download evidence, run scanners, or modify receipts.
 
@@ -62,7 +63,7 @@ Use `--format json` for machine-readable output. Exit codes are stable: `0` mean
 
 ## GitHub Action
 
-The experimental Action is a thin wrapper around the same verifier and policy layer. It runs on the Node 24 GitHub Actions runtime, requires all three inputs, and does not install dependencies in the consuming repository:
+The experimental Action is a thin wrapper around the same verifier and policy layer. It runs on the Node 24 GitHub Actions runtime, requires receipt, artifact, and policy inputs, and accepts an optional local `evidence` path. It does not install dependencies or download `evidence_ref` in the consuming repository:
 
 ```yaml
 - uses: yandexuanxuan/mcp-evidence-gate@<immutable-commit-sha>
@@ -72,7 +73,7 @@ The experimental Action is a thin wrapper around the same verifier and policy la
     policy: permissive
 ```
 
-It emits `decision`, `receipt-verdict`, and `profile`. PASS and WARN succeed; FAIL and INCONCLUSIVE fail the step. INCONCLUSIVE means the evidence does not support the release, not that the server was proven unsafe. The checked-in `dist/action/index.cjs` is a self-contained Node 24 bundle matching the declared Action runtime.
+It emits `decision`, `receipt-verdict`, and `profile`. PASS and policy-allowed WARN succeed; FAIL and INCONCLUSIVE fail the step. INCONCLUSIVE means the evidence does not support the release, not that the server was proven unsafe. The checked-in `dist/action/index.cjs` is a self-contained Node 24 bundle matching the declared Action runtime.
 
 ## Tested downstream integration
 

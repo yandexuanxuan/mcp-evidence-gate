@@ -4,7 +4,11 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-- Future changes will be recorded before release tagging.
+- Preserved one verifier evaluation clock through policy replay.
+- Made warning admission explicit with `warningDisposition` and added
+  `strict-evidence-example`.
+- Added optional offline local evidence-report digest binding via `--evidence`.
+- Derived the CLI version from `package.json`.
 
 ## [0.1.0-alpha.2] - 2026-08-31
 

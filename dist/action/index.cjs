@@ -28009,7 +28009,9 @@ var PERMISSIVE_POLICY = {
   requireFreshness: false,
   requiredScopes: [],
   allowedAttestations: REGISTRY_PR_1404_PROFILE.attestations,
-  clockSkewMs: 5 * 60 * 1e3
+  clockSkewMs: 5 * 60 * 1e3,
+  warningDisposition: "allow",
+  requireEvidenceBinding: false
 };
 var STRICT_RELEASE_EXAMPLE_POLICY = {
   name: "strict-release-example",
@@ -28017,13 +28019,22 @@ var STRICT_RELEASE_EXAMPLE_POLICY = {
   requiredScopes: ["package", "handler-validation"],
   allowedAttestations: ["third-party-attested"],
   maxScanAgeMs: 7 * 24 * 60 * 60 * 1e3,
-  clockSkewMs: 5 * 60 * 1e3
+  clockSkewMs: 5 * 60 * 1e3,
+  warningDisposition: "block",
+  requireEvidenceBinding: false
+};
+var STRICT_EVIDENCE_EXAMPLE_POLICY = {
+  ...STRICT_RELEASE_EXAMPLE_POLICY,
+  name: "strict-evidence-example",
+  requireEvidenceBinding: true
 };
 function policyByName(name) {
   if (name === PERMISSIVE_POLICY.name)
     return PERMISSIVE_POLICY;
   if (name === STRICT_RELEASE_EXAMPLE_POLICY.name)
     return STRICT_RELEASE_EXAMPLE_POLICY;
+  if (name === STRICT_EVIDENCE_EXAMPLE_POLICY.name)
+    return STRICT_EVIDENCE_EXAMPLE_POLICY;
   throw new Error(`unknown policy: ${name}`);
 }
 var RANK = {
@@ -28038,7 +28049,10 @@ function highestDecision(reasons) {
     "pass"
   );
 }
-function evaluatePolicy(receipt, verification, policy, now = /* @__PURE__ */ new Date()) {
+function evaluatePolicy(receipt, verification, policy, _now) {
+  const now = new Date(verification.evaluatedAt);
+  if (Number.isNaN(now.getTime()))
+    throw new Error("invalid_evaluated_at");
   const reasons = [];
   const add = (code, decision, detail) => reasons.push({ code, decision, detail });
   const structure = verification.checks.find((check) => check.id === "receipt_structure");
@@ -28081,6 +28095,17 @@ function evaluatePolicy(receipt, verification, policy, now = /* @__PURE__ */ new
       add("scan_too_old", "inconclusive", "Receipt scanned_at exceeds the maximum age allowed by policy.");
     }
   }
+  const evidence = verification.checks.find((check) => check.id === "evidence_binding");
+  if (policy.requireEvidenceBinding) {
+    if (!evidence || evidence.status === "not_present")
+      add("evidence_binding_required", "inconclusive", "This policy requires a locally provided evidence report bound by digest.");
+    else if (evidence.status === "mismatch")
+      add("evidence_digest_mismatch", "inconclusive", "Evidence report digest does not bind to the receipt.");
+    else if (evidence.status === "unsupported")
+      add("unsupported_evidence_digest_algorithm", "inconclusive", "The evidence digest algorithm is not supported by this verifier.");
+    else if (evidence.status === "invalid")
+      add("evidence_binding_invalid", "fail", "Evidence digest binding is invalid.");
+  }
   const freshness = verification.checks.find((check) => check.id === "freshness");
   if (policy.requireFreshness && freshness?.status === "not_present") {
     add("freshness_required", "fail", "This policy requires freshness_expires_at to be declared.");
@@ -28098,7 +28123,7 @@ function evaluatePolicy(receipt, verification, policy, now = /* @__PURE__ */ new
   if (verdict === "findings") {
     add("receipt_findings", "fail", "Receipt verdict reports findings.");
   } else if (verdict === "warnings") {
-    add("receipt_warnings", "warn", "Receipt verdict reports warnings.");
+    add(policy.warningDisposition === "block" ? "receipt_warnings_blocked" : "receipt_warnings", policy.warningDisposition === "block" ? "fail" : "warn", policy.warningDisposition === "block" ? "Policy blocks receipt warnings." : "Receipt verdict reports warnings.");
   } else if (verdict === "inconclusive") {
     add("receipt_inconclusive", "inconclusive", "Receipt verdict is inconclusive.");
   }
@@ -28165,6 +28190,23 @@ async function verifyArtifactBinding(receiptDigest, artifactPath) {
     expected: `sha256:${expected.hex}`,
     actual
   };
+}
+async function verifyEvidenceBinding(receiptDigest, evidencePath) {
+  let expected;
+  try {
+    expected = parseDigest(receiptDigest);
+  } catch (error) {
+    const code = error instanceof DigestError ? error.code : "malformed_digest";
+    return { id: "evidence_binding", status: code === "unsupported_digest_algorithm" ? "unsupported" : "invalid", reason: code };
+  }
+  if (!evidencePath)
+    return { id: "evidence_binding", status: "not_present", reason: "evidence_file_not_provided" };
+  try {
+    const actual = await sha256Artifact(evidencePath);
+    return actual === `sha256:${expected.hex}` ? { id: "evidence_binding", status: "pass", expected: actual, actual } : { id: "evidence_binding", status: "mismatch", reason: "evidence_digest_mismatch", expected: `sha256:${expected.hex}`, actual };
+  } catch {
+    return { id: "evidence_binding", status: "not_present", reason: "evidence_file_missing" };
+  }
 }
 
 // src/core/inconclusive.ts
@@ -28281,6 +28323,7 @@ function validateReceiptStructure(receipt) {
 async function verifyReceiptEvidence(receipt, artifactPath, now, freshnessOptions = {}) {
   return {
     profile: REGISTRY_PR_1404_PROFILE.id,
+    evaluatedAt: now.toISOString(),
     checks: [
       await verifyArtifactBinding(receipt.scanned_artifact_digest, artifactPath),
       evaluateFreshness(receipt.freshness_expires_at, {
@@ -28289,7 +28332,8 @@ async function verifyReceiptEvidence(receipt, artifactPath, now, freshnessOption
         ...freshnessOptions
       }),
       validateScanScope(receipt.scan_scope),
-      validateInconclusiveReason(receipt.verdict, receipt.inconclusive_reason)
+      validateInconclusiveReason(receipt.verdict, receipt.inconclusive_reason),
+      ...receipt.evidence_digest !== void 0 || freshnessOptions.evidencePath ? [await verifyEvidenceBinding(receipt.evidence_digest, freshnessOptions.evidencePath)] : []
     ]
   };
 }
@@ -28298,12 +28342,14 @@ async function verifyReceipt(receipt, artifactPath, now, freshnessOptions = {}) 
   if (structure.status !== "pass") {
     return {
       profile: REGISTRY_PR_1404_PROFILE.id,
+      evaluatedAt: now.toISOString(),
       checks: [structure]
     };
   }
   const evidence = await verifyReceiptEvidence(receipt, artifactPath, now, freshnessOptions);
   return {
     profile: evidence.profile,
+    evaluatedAt: evidence.evaluatedAt,
     checks: [structure, ...evidence.checks]
   };
 }
@@ -28319,6 +28365,7 @@ async function runAction() {
   const receiptInput = core.getInput("receipt", { required: true });
   const artifactInput = core.getInput("artifact", { required: true });
   const policyInput = core.getInput("policy", { required: true });
+  const evidenceInput = core.getInput("evidence");
   const receiptPath = workspacePath(receiptInput);
   const artifactPath = workspacePath(artifactInput);
   const policy = policyByName(policyInput);
@@ -28326,7 +28373,8 @@ async function runAction() {
   const receipt = JSON.parse(await (0, import_promises.readFile)(receiptPath, "utf8"));
   const verification = await verifyReceipt(receipt, artifactPath, evaluatedAt, {
     maxScanAgeMs: policy.maxScanAgeMs,
-    clockSkewMs: policy.clockSkewMs
+    clockSkewMs: policy.clockSkewMs,
+    evidencePath: evidenceInput ? workspacePath(evidenceInput) : void 0
   });
   const evaluation = evaluatePolicy(receipt, verification, policy, evaluatedAt);
   core.setOutput("decision", evaluation.decision);

@@ -17,6 +17,7 @@ export async function runAction(): Promise<void> {
   const receiptInput = core.getInput("receipt", { required: true });
   const artifactInput = core.getInput("artifact", { required: true });
   const policyInput = core.getInput("policy", { required: true });
+  const evidenceInput = core.getInput("evidence");
   const receiptPath = workspacePath(receiptInput);
   const artifactPath = workspacePath(artifactInput);
   const policy = policyByName(policyInput);
@@ -24,7 +25,8 @@ export async function runAction(): Promise<void> {
   const receipt = JSON.parse(await readFile(receiptPath, "utf8")) as ReceiptInput;
   const verification = await verifyReceipt(receipt, artifactPath, evaluatedAt, {
     maxScanAgeMs: policy.maxScanAgeMs,
-    clockSkewMs: policy.clockSkewMs
+    clockSkewMs: policy.clockSkewMs,
+    evidencePath: evidenceInput ? workspacePath(evidenceInput) : undefined
   });
   const evaluation = evaluatePolicy(receipt, verification, policy, evaluatedAt);
 

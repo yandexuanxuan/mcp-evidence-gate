@@ -12,6 +12,8 @@ export interface PolicyConfig {
   allowedAttestations: readonly Attestation[];
   maxScanAgeMs?: number;
   clockSkewMs?: number;
+  warningDisposition: "allow" | "block";
+  requireEvidenceBinding: boolean;
 }
 
 export interface PolicyReason {
@@ -33,7 +35,9 @@ export const PERMISSIVE_POLICY: PolicyConfig = {
   requireFreshness: false,
   requiredScopes: [],
   allowedAttestations: REGISTRY_PR_1404_PROFILE.attestations,
-  clockSkewMs: 5 * 60 * 1000
+  clockSkewMs: 5 * 60 * 1000,
+  warningDisposition: "allow",
+  requireEvidenceBinding: false
 };
 
 export const STRICT_RELEASE_EXAMPLE_POLICY: PolicyConfig = {
@@ -42,12 +46,21 @@ export const STRICT_RELEASE_EXAMPLE_POLICY: PolicyConfig = {
   requiredScopes: ["package", "handler-validation"],
   allowedAttestations: ["third-party-attested"],
   maxScanAgeMs: 7 * 24 * 60 * 60 * 1000,
-  clockSkewMs: 5 * 60 * 1000
+  clockSkewMs: 5 * 60 * 1000,
+  warningDisposition: "block",
+  requireEvidenceBinding: false
+};
+
+export const STRICT_EVIDENCE_EXAMPLE_POLICY: PolicyConfig = {
+  ...STRICT_RELEASE_EXAMPLE_POLICY,
+  name: "strict-evidence-example",
+  requireEvidenceBinding: true
 };
 
 export function policyByName(name: string): PolicyConfig {
   if (name === PERMISSIVE_POLICY.name) return PERMISSIVE_POLICY;
   if (name === STRICT_RELEASE_EXAMPLE_POLICY.name) return STRICT_RELEASE_EXAMPLE_POLICY;
+  if (name === STRICT_EVIDENCE_EXAMPLE_POLICY.name) return STRICT_EVIDENCE_EXAMPLE_POLICY;
   throw new Error(`unknown policy: ${name}`);
 }
 
@@ -69,8 +82,10 @@ export function evaluatePolicy(
   receipt: ReceiptInput,
   verification: VerificationResult,
   policy: PolicyConfig,
-  now: Date = new Date()
+  _now?: Date
 ): PolicyEvaluation {
+  const now = new Date(verification.evaluatedAt);
+  if (Number.isNaN(now.getTime())) throw new Error("invalid_evaluated_at");
   const reasons: PolicyReason[] = [];
   const add = (code: string, decision: PolicyDecision, detail: string) =>
     reasons.push({ code, decision, detail });
@@ -127,6 +142,14 @@ export function evaluatePolicy(
     }
   }
 
+  const evidence = verification.checks.find((check) => check.id === "evidence_binding");
+  if (policy.requireEvidenceBinding) {
+    if (!evidence || evidence.status === "not_present") add("evidence_binding_required", "inconclusive", "This policy requires a locally provided evidence report bound by digest.");
+    else if (evidence.status === "mismatch") add("evidence_digest_mismatch", "inconclusive", "Evidence report digest does not bind to the receipt.");
+    else if (evidence.status === "unsupported") add("unsupported_evidence_digest_algorithm", "inconclusive", "The evidence digest algorithm is not supported by this verifier.");
+    else if (evidence.status === "invalid") add("evidence_binding_invalid", "fail", "Evidence digest binding is invalid.");
+  }
+
   const freshness = verification.checks.find((check) => check.id === "freshness");
   if (policy.requireFreshness && freshness?.status === "not_present") {
     add("freshness_required", "fail", "This policy requires freshness_expires_at to be declared.");
@@ -147,7 +170,7 @@ export function evaluatePolicy(
   if (verdict === "findings") {
     add("receipt_findings", "fail", "Receipt verdict reports findings.");
   } else if (verdict === "warnings") {
-    add("receipt_warnings", "warn", "Receipt verdict reports warnings.");
+    add(policy.warningDisposition === "block" ? "receipt_warnings_blocked" : "receipt_warnings", policy.warningDisposition === "block" ? "fail" : "warn", policy.warningDisposition === "block" ? "Policy blocks receipt warnings." : "Receipt verdict reports warnings.");
   } else if (verdict === "inconclusive") {
     add("receipt_inconclusive", "inconclusive", "Receipt verdict is inconclusive.");
   }

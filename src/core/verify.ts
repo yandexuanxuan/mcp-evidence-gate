@@ -1,5 +1,5 @@
 import { REGISTRY_PR_1404_PROFILE } from "../profiles/registry-pr-1404.js";
-import { verifyArtifactBinding } from "./digest.js";
+import { verifyArtifactBinding, verifyEvidenceBinding } from "./digest.js";
 import { evaluateFreshness } from "./freshness.js";
 import { validateInconclusiveReason } from "./inconclusive.js";
 import { validateScanScope } from "./scope.js";
@@ -7,14 +7,17 @@ import { validateReceiptStructure } from "./structural.js";
 import type { FreshnessOptions } from "./freshness.js";
 import type { ReceiptInput, VerificationResult } from "./types.js";
 
+export interface VerificationOptions extends Omit<FreshnessOptions, "now"> { evidencePath?: string; }
+
 export async function verifyReceiptEvidence(
   receipt: ReceiptInput,
   artifactPath: string,
   now: Date,
-  freshnessOptions: Omit<FreshnessOptions, "now"> = {}
+  freshnessOptions: VerificationOptions = {}
 ): Promise<VerificationResult> {
   return {
     profile: REGISTRY_PR_1404_PROFILE.id,
+    evaluatedAt: now.toISOString(),
     checks: [
       await verifyArtifactBinding(receipt.scanned_artifact_digest, artifactPath),
       evaluateFreshness(receipt.freshness_expires_at, {
@@ -23,7 +26,9 @@ export async function verifyReceiptEvidence(
         ...freshnessOptions
       }),
       validateScanScope(receipt.scan_scope),
-      validateInconclusiveReason(receipt.verdict, receipt.inconclusive_reason)
+      validateInconclusiveReason(receipt.verdict, receipt.inconclusive_reason),
+      ...(receipt.evidence_digest !== undefined || freshnessOptions.evidencePath
+        ? [await verifyEvidenceBinding(receipt.evidence_digest, freshnessOptions.evidencePath)] : [])
     ]
   };
 }
@@ -32,18 +37,20 @@ export async function verifyReceipt(
   receipt: ReceiptInput,
   artifactPath: string,
   now: Date,
-  freshnessOptions: Omit<FreshnessOptions, "now"> = {}
+  freshnessOptions: VerificationOptions = {}
 ): Promise<VerificationResult> {
   const structure = validateReceiptStructure(receipt);
   if (structure.status !== "pass") {
     return {
       profile: REGISTRY_PR_1404_PROFILE.id,
+      evaluatedAt: now.toISOString(),
       checks: [structure]
     };
   }
   const evidence = await verifyReceiptEvidence(receipt, artifactPath, now, freshnessOptions);
   return {
     profile: evidence.profile,
+    evaluatedAt: evidence.evaluatedAt,
     checks: [structure, ...evidence.checks]
   };
 }

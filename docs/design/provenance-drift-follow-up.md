@@ -115,8 +115,17 @@ prototype must account for at least:
 
 Community-reported counts can motivate the experiment but must not be presented
 as compromise prevalence or attack probability. The ownership/source event
-series discussed in Registry PR #1404 is currently an external claim until its
-public data and reproduction method are available and independently checked.
+series discussed in Registry PR #1404 is now publicly available at
+https://pulsefeed.dev/evidence/name-custody.json. A 2026-08-31 reproducibility
+review parsed its raw events and recomputed 177 events across 172 distinct
+packages: 82 without a same-calendar-day UTC version (46.3%) and 95 with one;
+type counts were repo_changed 68, unpublished 50, maintainer_changed 38, and
+repo_removed 21. This confirms the summary is recomputable, but not event
+correctness or authoritative coverage: the producer is an interested party,
+coverage is limited to the stated registry/npm surfaces, and OpenTimestamps
+proves manifest existence timing rather than correctness. The implementation
+gate is therefore `PROTOTYPE_READY`, suitable for a downstream evaluator but
+not a production trusted provenance source.
 
 ## Relationship to `scan_scope`
 

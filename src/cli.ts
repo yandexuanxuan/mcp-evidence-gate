@@ -4,8 +4,9 @@ import { resolve } from "node:path";
 import { evaluatePolicy, policyByName, type PolicyConfig } from "./core/policy.js";
 import { verifyReceipt } from "./core/verify.js";
 import type { ReceiptInput, VerificationResult } from "./core/types.js";
+import packageJson from "../package.json" with { type: "json" };
 
-export const CLI_VERSION = "0.1.0-alpha.1";
+export const CLI_VERSION = packageJson.version;
 
 export interface CliIO {
   stdout: (text: string) => void;
@@ -18,6 +19,7 @@ interface VerifyArgs {
   policy: string;
   format: "text" | "json";
   now?: string;
+  evidence?: string;
 }
 
 class CliInputError extends Error {}
@@ -30,7 +32,8 @@ Usage:
 Options:
   --receipt <path>   Receipt JSON path (required)
   --artifact <path>  Artifact path (required)
-  --policy <name>    permissive or strict-release-example (required)
+  --policy <name>    permissive, strict-release-example, or strict-evidence-example (required)
+  --evidence <path>  Optional local evidence report for evidence_digest binding
   --format <mode>    text or json (default: text)
   --now <RFC3339>    Evaluation time; defaults to the current time
   --help             Show this help
@@ -60,6 +63,7 @@ function parseArgs(argv: string[]): VerifyArgs | "help" | "version" {
     else if (flag === "--policy") values.policy = value;
     else if (flag === "--format" && (value === "text" || value === "json")) values.format = value;
     else if (flag === "--now") values.now = value;
+    else if (flag === "--evidence") values.evidence = value;
     else throw new CliInputError(`unknown option: ${flag}`);
   }
 
@@ -90,7 +94,7 @@ function outputModel(
     policy: decision.policy,
     receiptVerdict: decision.receiptVerdict,
     decision: decision.decision,
-    evaluatedAt: evaluatedAt.toISOString(),
+    evaluatedAt: verification.evaluatedAt,
     checks: verification.checks,
     reasons: decision.reasons
   };
@@ -145,7 +149,8 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
     const receipt = JSON.parse(await readFile(parsed.receipt, "utf8")) as ReceiptInput;
     const verification = await verifyReceipt(receipt, parsed.artifact, evaluatedAt, {
       maxScanAgeMs: policy.maxScanAgeMs,
-      clockSkewMs: policy.clockSkewMs
+      clockSkewMs: policy.clockSkewMs,
+      evidencePath: parsed.evidence
     });
     const model = outputModel(policy, verification, receipt, evaluatedAt);
     if (parsed.format === "json") io.stdout(`${JSON.stringify(model, null, 2)}\n`);
