@@ -255,6 +255,13 @@ describe("deterministic policy decisions", () => {
       const optNoEvidenceUnsupported = await verifyReceipt(unsupportedReceipt, artifactPath, now);
       expect(evaluatePolicy(unsupportedReceipt, optNoEvidenceUnsupported, PERMISSIVE_POLICY).decision).toBe("pass");
 
+      // optional / no evidence with malformed known digest -> FAIL (invalid metadata)
+      const malformedReceipt = { ...permissiveReceipt, evidence_digest: "sha256:0" };
+      const optNoEvidenceMalformed = await verifyReceipt(malformedReceipt, artifactPath, now);
+      const optNoEvidenceMalformedEval = evaluatePolicy(malformedReceipt, optNoEvidenceMalformed, PERMISSIVE_POLICY);
+      expect(optNoEvidenceMalformedEval.decision).toBe("fail");
+      expect(optNoEvidenceMalformedEval.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: "evidence_binding_invalid" })]));
+
       // optional / match -> PASS
       const optMatch = await verifyReceipt(permissiveReceipt, artifactPath, now, { evidencePath: validEvidencePath });
       expect(evaluatePolicy(permissiveReceipt, optMatch, PERMISSIVE_POLICY).decision).toBe("pass");
@@ -282,6 +289,13 @@ describe("deterministic policy decisions", () => {
       const strictNoEvidenceEval = evaluatePolicy(strictReceipt, strictNoEvidence, STRICT_EVIDENCE_EXAMPLE_POLICY);
       expect(strictNoEvidenceEval.decision).toBe("inconclusive");
       expect(strictNoEvidenceEval.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: "evidence_binding_required" })]));
+
+      // strict / no evidence with unsupported algorithm -> INCONCLUSIVE (evidence_binding_required)
+      const strictUnsupportedReceipt = { ...strictReceipt, evidence_digest: "sha512:" + "0".repeat(128) };
+      const strictNoEvidenceUnsupported = await verifyReceipt(strictUnsupportedReceipt, artifactPath, now);
+      const strictNoEvidenceUnsupportedEval = evaluatePolicy(strictUnsupportedReceipt, strictNoEvidenceUnsupported, STRICT_EVIDENCE_EXAMPLE_POLICY);
+      expect(strictNoEvidenceUnsupportedEval.decision).toBe("inconclusive");
+      expect(strictNoEvidenceUnsupportedEval.reasons).toEqual(expect.arrayContaining([expect.objectContaining({ code: "evidence_binding_required" })]));
 
       // strict / match -> PASS
       const strictMatch = await verifyReceipt(strictReceipt, artifactPath, now, { evidencePath: validEvidencePath });

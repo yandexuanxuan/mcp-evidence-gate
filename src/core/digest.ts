@@ -74,13 +74,19 @@ export async function verifyArtifactBinding(
 }
 
 export async function verifyEvidenceBinding(receiptDigest: unknown, evidencePath?: string): Promise<Finding> {
-  if (!evidencePath) return { id: "evidence_binding", status: "not_present", reason: "evidence_file_not_provided" };
   let expected: ParsedDigest;
   try { expected = parseDigest(receiptDigest); }
   catch (error) {
     const code = error instanceof DigestError ? error.code : "malformed_digest";
-    return { id: "evidence_binding", status: code === "unsupported_digest_algorithm" ? "unsupported" : "invalid", reason: code };
+    if (code === "unsupported_digest_algorithm") {
+      if (!evidencePath) {
+        return { id: "evidence_binding", status: "not_present", reason: "evidence_file_not_provided" };
+      }
+      return { id: "evidence_binding", status: "unsupported", reason: code };
+    }
+    return { id: "evidence_binding", status: "invalid", reason: code };
   }
+  if (!evidencePath) return { id: "evidence_binding", status: "not_present", reason: "evidence_file_not_provided" };
   try {
     const actual = await sha256Artifact(evidencePath);
     return actual === `sha256:${expected.hex}`

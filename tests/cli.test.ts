@@ -117,6 +117,25 @@ describe("mcp-evidence-gate verify CLI", () => {
     expect(result.stdout).toContain("Decision: INCONCLUSIVE");
   });
 
+  it("returns FAIL with exit 1 for malformed evidence digest without --evidence", async () => {
+    const result = await invoke([
+      "verify", "--receipt", receipt("complete-malformed-evidence-digest.json"), "--artifact", artifact,
+      "--policy", "permissive", "--now", now
+    ]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("Decision: FAIL");
+    expect(result.stdout).toContain("evidence_binding_invalid");
+  });
+
+  it("returns PASS with exit 0 for unsupported well-formed evidence digest without --evidence", async () => {
+    const result = await invoke([
+      "verify", "--receipt", receipt("complete-unsupported-evidence-digest.json"), "--artifact", artifact,
+      "--policy", "permissive", "--now", now
+    ]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Decision: PASS");
+  });
+
   it("supports help and version without requiring verification inputs", async () => {
     const help = await invoke(["--help"]);
     const version = await invoke(["--version"]);
