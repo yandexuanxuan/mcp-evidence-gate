@@ -59,7 +59,7 @@ jobs:
         run: node scripts/profile-drift-sentinel.mjs --output profile-drift-report.json
 
       - name: Upload profile drift evidence
-        if: always()
+        if: steps.profile_drift.outcome != 'skipped'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: profile-drift-${{ github.sha }}
@@ -68,7 +68,7 @@ jobs:
           path: profile-drift-report.json
 
       - name: Enforce profile drift result
-        if: always()
+        if: steps.profile_drift.outcome != 'skipped'
         env:
           DRIFT_OUTCOME: ${{ steps.profile_drift.outcome }}
         run: test "$DRIFT_OUTCOME" = success
