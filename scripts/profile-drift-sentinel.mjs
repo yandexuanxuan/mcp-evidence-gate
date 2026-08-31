@@ -137,22 +137,26 @@ export function classifyDrift({
     return { status: 'LOCAL_PIN_MISMATCH', safe: false, ...base };
   }
 
-  // A changed canonical OpenAPI component with a byte-equivalent generated
-  // component indicates stale generation or an unexplained source/generator
-  // relationship. Do not trust the generated contract in that state.
-  if (sourceComponentChanged && !generatedComponentChanged) {
-    return { status: 'SOURCE_GENERATION_MISMATCH', safe: false, ...base };
+  // An explicit generated consumer-contract change is the strongest signal and
+  // is classified before source-text drift so the required response is clear.
+  if (pinnedContractHash !== currentContractHash) {
+    return { status: 'CONTRACT_CHANGE', safe: false, ...base };
+  }
+
+  // We intentionally do not infer semantic equivalence between OpenAPI YAML and
+  // the generated JSON Schema. Without a complete OpenAPI/YAML semantic parser,
+  // any change to the canonical SecurityScanReceipt source component requires a
+  // separately reviewed profile decision, even when generated output appears
+  // non-contractual or unchanged.
+  if (sourceComponentChanged) {
+    return { status: 'SOURCE_COMPONENT_CHANGE', safe: false, ...base };
   }
 
   if (pinnedHeadSha === currentHeadSha) {
     return { status: 'NO_CHANGE', safe: true, ...base };
   }
 
-  if (pinnedContractHash === currentContractHash) {
-    return { status: 'NON_CONTRACT_CHANGE', safe: true, ...base };
-  }
-
-  return { status: 'CONTRACT_CHANGE', safe: false, ...base };
+  return { status: 'NON_CONTRACT_CHANGE', safe: true, ...base };
 }
 
 export function enforceUpstreamLifecycle(classification, { state, mergedAt }) {
@@ -172,8 +176,8 @@ export function actionForStatus(status, safe) {
   switch (status) {
     case 'LOCAL_PIN_MISMATCH':
       return 'STOP_AND_RECONCILE_PINNED_PROFILE';
-    case 'SOURCE_GENERATION_MISMATCH':
-      return 'STOP_AND_INVESTIGATE_UPSTREAM_SOURCE_GENERATION';
+    case 'SOURCE_COMPONENT_CHANGE':
+      return 'STOP_AND_REVIEW_UPSTREAM_SOURCE_COMPONENT';
     case 'UPSTREAM_LIFECYCLE_CHANGE':
       return 'STOP_AND_REVIEW_UPSTREAM_LIFECYCLE_TRANSITION';
     case 'CONTRACT_CHANGE':
