@@ -28196,6 +28196,8 @@ async function verifyArtifactBinding(receiptDigest, artifactPath) {
   };
 }
 async function verifyEvidenceBinding(receiptDigest, evidencePath) {
+  if (!evidencePath)
+    return { id: "evidence_binding", status: "not_present", reason: "evidence_file_not_provided" };
   let expected;
   try {
     expected = parseDigest(receiptDigest);
@@ -28203,8 +28205,6 @@ async function verifyEvidenceBinding(receiptDigest, evidencePath) {
     const code = error instanceof DigestError ? error.code : "malformed_digest";
     return { id: "evidence_binding", status: code === "unsupported_digest_algorithm" ? "unsupported" : "invalid", reason: code };
   }
-  if (!evidencePath)
-    return { id: "evidence_binding", status: "not_present", reason: "evidence_file_not_provided" };
   try {
     const actual = await sha256Artifact(evidencePath);
     return actual === `sha256:${expected.hex}` ? { id: "evidence_binding", status: "pass", expected: actual, actual } : { id: "evidence_binding", status: "mismatch", reason: "evidence_digest_mismatch", expected: `sha256:${expected.hex}`, actual };

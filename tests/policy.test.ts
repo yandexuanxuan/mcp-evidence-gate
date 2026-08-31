@@ -251,6 +251,10 @@ describe("deterministic policy decisions", () => {
       const optNoEvidence = await verifyReceipt(permissiveReceipt, artifactPath, now);
       expect(evaluatePolicy(permissiveReceipt, optNoEvidence, PERMISSIVE_POLICY).decision).toBe("pass");
 
+      // optional / no evidence with unsupported metadata digest -> PASS (binding not requested)
+      const optNoEvidenceUnsupported = await verifyReceipt(unsupportedReceipt, artifactPath, now);
+      expect(evaluatePolicy(unsupportedReceipt, optNoEvidenceUnsupported, PERMISSIVE_POLICY).decision).toBe("pass");
+
       // optional / match -> PASS
       const optMatch = await verifyReceipt(permissiveReceipt, artifactPath, now, { evidencePath: validEvidencePath });
       expect(evaluatePolicy(permissiveReceipt, optMatch, PERMISSIVE_POLICY).decision).toBe("pass");
