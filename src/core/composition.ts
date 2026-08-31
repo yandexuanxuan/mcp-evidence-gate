@@ -1,3 +1,4 @@
+import { sha256Artifact } from "./digest.js";
 import {
   evaluatePolicy,
   type PolicyConfig,
@@ -25,6 +26,7 @@ export interface ReceiptSetEvaluation {
   profile: VerificationResult["profile"];
   policy: string;
   evaluatedAt: string;
+  artifactDigest: string;
   receiptCount: number;
   decision: PolicyDecision;
   receipts: ReceiptSetEntryEvaluation[];
@@ -68,6 +70,7 @@ export async function evaluateReceiptSet(
   }
 
   const evaluatedAt = now.toISOString();
+  const artifactDigest = await sha256Artifact(artifactPath);
   const receipts: ReceiptSetEntryEvaluation[] = [];
 
   for (const [index, entry] of entries.entries()) {
@@ -78,6 +81,13 @@ export async function evaluateReceiptSet(
     });
     if (verification.evaluatedAt !== evaluatedAt) {
       throw new Error("receipt_set_evaluation_time_drift");
+    }
+
+    // The set-level artifact identity is frozen at entry. Re-hash after every
+    // receipt evaluation so a concurrent file rewrite cannot silently turn one
+    // logical set into evaluations of different persistent artifact states.
+    if (await sha256Artifact(artifactPath) !== artifactDigest) {
+      throw new Error("receipt_set_artifact_drift");
     }
 
     receipts.push({
@@ -98,6 +108,7 @@ export async function evaluateReceiptSet(
     profile: receipts[0].verification.profile,
     policy: policy.name,
     evaluatedAt,
+    artifactDigest,
     receiptCount: receipts.length,
     decision: highestCompositionDecision(receipts.map((entry) => entry.evaluation.decision)),
     receipts
