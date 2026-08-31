@@ -40,6 +40,8 @@ The strict policies are project-defined examples, not MCP Registry requirements 
 pass < warn < inconclusive < fail
 ```
 
+The set freezes the artifact SHA-256 before evaluating the first receipt and rechecks it after each receipt. Persistent artifact drift aborts the set as a runtime invariant violation instead of silently composing different artifact states. The frozen `artifactDigest` is exposed in text and JSON output. This is a drift guard, not a claim of transactional filesystem snapshot isolation.
+
 No synthetic `SecurityScanReceipt` is created, scanner verdicts are not rewritten, and duplicate scanners do not create quorum or additional trust.
 
 A receipt-set manifest is explicitly project-defined:
