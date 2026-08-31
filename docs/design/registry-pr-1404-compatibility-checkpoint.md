@@ -96,6 +96,16 @@ consumer contract.
 
 ## Unknowns and reopen conditions
 
+## 2026-08-31 downstream implementation state
+
+The historical dogfood observations above are retained unchanged. The current
+development branch adds explicit warning disposition and optional offline local
+`evidence_digest` binding. Its Action bundle is built from commit
+`f8a0b517a15896848530365f77d21482e34fdbca`; the companion dogfood branch pins
+that full SHA and adds permissive/strict warning cases. These feature branches
+are local pending authenticated push, so this is a development reference, not
+yet a public release tag.
+
 Known unknowns are whether a Registry maintainer will formally review or merge
 #1404, whether the PR will receive additional schema changes, and whether the
 ownership/source dataset will become independently reproducible. Re-open the
