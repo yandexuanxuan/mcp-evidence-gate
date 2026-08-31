@@ -149,6 +149,9 @@ export function evaluatePolicy(
     else if (evidence.status === "unsupported") add("unsupported_evidence_digest_algorithm", "inconclusive", "The evidence digest algorithm is not supported by this verifier.");
     else if (evidence.status === "invalid") add("evidence_binding_invalid", "fail", "Evidence digest binding is invalid.");
   }
+  if (!policy.requireEvidenceBinding && evidence?.status === "not_present" && evidence.reason === "evidence_file_missing") {
+    add("evidence_file_missing", "inconclusive", "An explicitly supplied evidence report could not be read.");
+  }
 
   const freshness = verification.checks.find((check) => check.id === "freshness");
   if (policy.requireFreshness && freshness?.status === "not_present") {

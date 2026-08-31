@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { evaluatePolicy, policyByName, type PolicyConfig } from "./core/policy.js";
 import { verifyReceipt } from "./core/verify.js";
 import type { ReceiptInput, VerificationResult } from "./core/types.js";
-import packageJson from "../package.json" with { type: "json" };
-
+const packageJson = createRequire(import.meta.url)("../package.json") as { version: string };
 export const CLI_VERSION = packageJson.version;
 
 export interface CliIO {

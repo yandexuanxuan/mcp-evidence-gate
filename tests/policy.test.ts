@@ -222,4 +222,11 @@ describe("deterministic policy decisions", () => {
     const verification = await verifyReceipt(omitted, artifactPath, now);
     expect(evaluatePolicy(omitted, verification, STRICT_EVIDENCE_EXAMPLE_POLICY).decision).toBe("inconclusive");
   });
+
+  it("does not silently pass when an explicitly supplied evidence file is missing", async () => {
+    const base = await fixture("valid/complete-clean.json");
+    const receipt = { ...base, evidence_digest: "sha256:" + "0".repeat(64) };
+    const verification = await verifyReceipt(receipt, artifactPath, now, { evidencePath: "/missing/evidence.json" });
+    expect(evaluatePolicy(receipt, verification, PERMISSIVE_POLICY)).toMatchObject({ decision: "inconclusive" });
+  });
 });
