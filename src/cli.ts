@@ -223,6 +223,7 @@ function renderSetText(model: {
   profile: string;
   policy: string;
   evaluatedAt: string;
+  artifactDigest: string;
   receiptCount: number;
   decision: string;
   receipts: Array<{
@@ -238,6 +239,7 @@ function renderSetText(model: {
     "MCP Evidence Gate Receipt Set",
     `Profile: ${model.profile}`,
     `Policy: ${model.policy}`,
+    `Artifact digest: ${model.artifactDigest}`,
     `Receipt count: ${model.receiptCount}`,
     `Evaluated at: ${model.evaluatedAt}`,
     "",
@@ -299,6 +301,7 @@ export async function runCli(argv: string[], io: CliIO): Promise<number> {
       profile: evaluation.profile,
       policy: evaluation.policy,
       evaluatedAt: evaluation.evaluatedAt,
+      artifactDigest: evaluation.artifactDigest,
       receiptCount: evaluation.receiptCount,
       decision: evaluation.decision,
       receipts: evaluation.receipts.map((entry) => ({
