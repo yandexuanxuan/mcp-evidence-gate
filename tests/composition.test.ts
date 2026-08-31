@@ -28,6 +28,7 @@ describe("multi-receipt composition", () => {
 
     expect(composed.decision).toBe(single.decision);
     expect(composed.receiptCount).toBe(1);
+    expect(composed.artifactDigest).toBe(receipt.scanned_artifact_digest);
     expect(composed.receipts[0].evaluation).toEqual(single);
     expect(composed.receipts[0].verification).toEqual(verification);
   });
@@ -110,7 +111,7 @@ describe("multi-receipt composition", () => {
     expect(second.decision).toBe(first.decision);
   });
 
-  it("uses one evaluation time for the whole set", async () => {
+  it("uses one evaluation time and one frozen artifact digest for the whole set", async () => {
     const clean = await load(validReceipt("complete-clean.json"));
     const warnings = await load(validReceipt("complete-warnings.json"));
     const result = await evaluateReceiptSet(
@@ -118,6 +119,7 @@ describe("multi-receipt composition", () => {
     );
 
     expect(result.evaluatedAt).toBe(now.toISOString());
+    expect(result.artifactDigest).toBe(clean.scanned_artifact_digest);
     expect(new Set(result.receipts.map((entry) => entry.verification.evaluatedAt))).toEqual(
       new Set([now.toISOString()])
     );
