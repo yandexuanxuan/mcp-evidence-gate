@@ -9,6 +9,7 @@ import {
 } from "../src/core/policy.js";
 import { STRICT_EVIDENCE_EXAMPLE_POLICY } from "../src/core/policy.js";
 import { verifyReceipt } from "../src/core/verify.js";
+import { sha256Bytes } from "../src/core/digest.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const artifactPath = resolve(root, "fixtures/artifacts/current-artifact.bin");
@@ -200,8 +201,9 @@ describe("deterministic policy decisions", () => {
 
   it("binds a supplied evidence report independently from the artifact", async () => {
     const base = await fixture("valid/complete-clean.json");
-    const receipt = { ...base, freshness_expires_at: "2026-08-26T00:00:00Z", scan_scope: ["package", "handler-validation"], attestation: "third-party-attested", evidence_digest: "sha256:1b880b4d3783f4566c1bbf1d1b8dd63ad7c69b443ad71f4ec8300287f412cb3e" };
     const evidencePath = resolve(root, "fixtures/valid/complete-clean.json");
+    const evidenceDigest = sha256Bytes(await readFile(evidencePath));
+    const receipt = { ...base, freshness_expires_at: "2026-08-26T00:00:00Z", scan_scope: ["package", "handler-validation"], attestation: "third-party-attested", evidence_digest: evidenceDigest };
     const verification = await verifyReceipt(receipt, artifactPath, now, { evidencePath });
     expect(verification.checks).toEqual(expect.arrayContaining([expect.objectContaining({ id: "evidence_binding", status: "pass" })]));
     expect(evaluatePolicy(receipt, verification, STRICT_EVIDENCE_EXAMPLE_POLICY).decision).toBe("pass");
@@ -216,7 +218,7 @@ describe("deterministic policy decisions", () => {
       const verification = await verifyReceipt(receipt, artifactPath, now, { evidencePath: resolve(root, "fixtures/valid/complete-clean.json") });
       expect(evaluatePolicy(receipt, verification, STRICT_EVIDENCE_EXAMPLE_POLICY).decision).toBe("inconclusive");
     }
-    const omitted = { ...strictBase, evidence_digest: "sha256:1b880b4d3783f4566c1bbf1d1b8dd63ad7c69b443ad71f4ec8300287f412cb3e" };
+    const omitted = { ...strictBase, evidence_digest: sha256Bytes(await readFile(resolve(root, "fixtures/valid/complete-clean.json"))) };
     const verification = await verifyReceipt(omitted, artifactPath, now);
     expect(evaluatePolicy(omitted, verification, STRICT_EVIDENCE_EXAMPLE_POLICY).decision).toBe("inconclusive");
   });
