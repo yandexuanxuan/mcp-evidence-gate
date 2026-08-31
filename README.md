@@ -77,7 +77,7 @@ It emits `decision`, `receipt-verdict`, and `profile`. PASS and policy-allowed W
 
 ## Tested downstream integration
 
-The companion [mcp-evidence-gate-dogfood](https://github.com/yandexuanxuan/mcp-evidence-gate-dogfood) repository runs the Action at immutable release commit `b8cacb5eadca53c8b9a1e8d5c8ac956fd579238d` (`v0.1.0-alpha.2`) and asserts both the decision and Action outcome for each case:
+The companion [mcp-evidence-gate-dogfood](https://github.com/yandexuanxuan/mcp-evidence-gate-dogfood) historically ran the `v0.1.0-alpha.2` release at immutable commit `b8cacb5eadca53c8b9a1e8d5c8ac956fd579238d` and asserted both decision and Action outcome. The current development dogfood branch pins the full hardening commit `f8a0b517a15896848530365f77d21482e34fdbca` and adds explicit warning-policy cases; it is pending authenticated push.
 
 - matching-clean: `PASS` / successful step;
 - digest-mismatch: `INCONCLUSIVE` / failed step;
