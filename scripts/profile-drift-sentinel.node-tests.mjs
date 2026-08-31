@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  actionForStatus,
   classifyDrift,
+  enforceUpstreamLifecycle,
   extractYamlComponentBlock,
   projectContract,
 } from './profile-drift-sentinel.mjs';
@@ -117,6 +119,24 @@ test('local schema mismatch fails closed before interpreting upstream drift', ()
   const result = classify(structuredClone(base), { localComponent: local });
   assert.equal(result.status, 'LOCAL_PIN_MISMATCH');
   assert.equal(result.safe, false);
+});
+
+test('upstream merge or closure invalidates an otherwise safe pinned profile state', () => {
+  const safe = classify(structuredClone(base));
+  const merged = enforceUpstreamLifecycle(safe, {
+    state: 'closed',
+    mergedAt: '2026-09-01T00:00:00Z',
+  });
+  assert.equal(merged.status, 'UPSTREAM_LIFECYCLE_CHANGE');
+  assert.equal(merged.safe, false);
+  assert.equal(actionForStatus(merged.status, merged.safe), 'STOP_AND_REVIEW_UPSTREAM_LIFECYCLE_TRANSITION');
+});
+
+test('open and unmerged upstream PR preserves a safe schema classification', () => {
+  const safe = classify(structuredClone(base));
+  const current = enforceUpstreamLifecycle(safe, { state: 'open', mergedAt: null });
+  assert.equal(current.status, safe.status);
+  assert.equal(current.safe, true);
 });
 
 test('YAML component extraction stops at the next sibling component', () => {
