@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs && node scripts/bundle-action.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:profile-drift": "node --test scripts/profile-drift-sentinel.test.mjs",
+    "test:profile-drift": "node --test scripts/profile-drift-sentinel.node-tests.mjs",
     "check:profile-drift": "node scripts/profile-drift-sentinel.mjs",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
