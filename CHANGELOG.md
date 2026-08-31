@@ -4,11 +4,26 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-- Preserved one verifier evaluation clock through policy replay.
-- Made warning admission explicit with `warningDisposition` and added
-  `strict-evidence-example`.
-- Added optional offline local evidence-report digest binding via `--evidence`.
-- Derived the CLI version from `package.json`.
+## [0.1.0-alpha.3] - 2026-08-31
+- Preserved one deterministic verifier evaluation clock through policy replay
+  to eliminate wall-clock drift.
+- Made warning admission explicit with `warningDisposition: allow | block`;
+  added `strict-evidence-example` policy with strict warning blocking.
+- Added optional offline local evidence report digest binding via
+  `--evidence` / Action `evidence` input.
+- Enforced mandatory verification when evidence is explicitly supplied:
+  read errors and digest mismatches are fail-closed/inconclusive across all
+  policies including `permissive`.
+- Rejected malformed known SHA-256 digests (`sha256:0`) even when no evidence
+  path is supplied.
+- Preserved unrequested, well-formed non-SHA-256 evidence algorithms under
+  optional policy (do not block permissive solely on an unrequested
+  algorithm).
+- Loaded the CLI version from `package.json` using Node >=20-compatible
+  `createRequire` instead of import attributes.
+- Ensured packed `dist/core/*` modules are included in the npm tarball.
+- Exercised an 11-case downstream dogfood oracle covering all admission
+  decisions.
 
 ## [0.1.0-alpha.2] - 2026-08-31
 
