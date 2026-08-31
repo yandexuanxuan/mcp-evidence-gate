@@ -6,10 +6,8 @@ const PROFILE_PATH = 'src/profiles/registry-pr-1404/profile.json';
 const LOCAL_SCHEMA_PATH = 'src/profiles/registry-pr-1404/security-scan-receipt.schema.json';
 const DEFAULT_GENERATED_SCHEMA_PATH = 'docs/reference/server-json/draft/server.schema.json';
 const COMPONENT = 'SecurityScanReceipt';
-const NON_CONTRACT_KEYS = new Set([
+const ANNOTATION_KEYS = new Set([
   '$comment',
-  '$id',
-  '$schema',
   'description',
   'example',
   'examples',
@@ -17,9 +15,9 @@ const NON_CONTRACT_KEYS = new Set([
 ]);
 const ORDER_INSENSITIVE_ARRAY_KEYS = new Set(['enum', 'required']);
 
-export function projectContract(value, parentKey = '') {
+function projectValue(value, parentKey, depth, options) {
   if (Array.isArray(value)) {
-    const projected = value.map((item) => projectContract(item));
+    const projected = value.map((item) => projectValue(item, parentKey, depth + 1, options));
     if (ORDER_INSENSITIVE_ARRAY_KEYS.has(parentKey)) {
       return projected.sort((a, b) => stableStringify(a).localeCompare(stableStringify(b)));
     }
@@ -29,13 +27,18 @@ export function projectContract(value, parentKey = '') {
   if (value !== null && typeof value === 'object') {
     const output = {};
     for (const key of Object.keys(value).sort()) {
-      if (NON_CONTRACT_KEYS.has(key)) continue;
-      output[key] = projectContract(value[key], key);
+      if (ANNOTATION_KEYS.has(key)) continue;
+      if (depth === 0 && options.stripRootIdentity && (key === '$id' || key === '$schema')) continue;
+      output[key] = projectValue(value[key], key, depth + 1, options);
     }
     return output;
   }
 
   return value;
+}
+
+export function projectContract(value, options = {}) {
+  return projectValue(value, '', 0, { stripRootIdentity: false, ...options });
 }
 
 export function stableStringify(value) {
@@ -70,7 +73,11 @@ export function classifyDrift({
   pinnedUpstreamComponent,
   currentUpstreamComponent,
 }) {
-  const localContract = projectContract(localComponent);
+  // The local schema is a standalone compatibility artifact and therefore has
+  // its own root $id/$schema wrapper. Strip only those local root identities.
+  // Upstream component $id/$schema values remain contract-significant because
+  // they can affect dialect/ref resolution semantics.
+  const localContract = projectContract(localComponent, { stripRootIdentity: true });
   const pinnedContract = projectContract(pinnedUpstreamComponent);
   const currentContract = projectContract(currentUpstreamComponent);
 
