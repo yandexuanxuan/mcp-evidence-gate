@@ -6,17 +6,21 @@ record, not an upstream adoption or review record.
 ## Snapshot
 
 - Source PR: [`modelcontextprotocol/registry#1404`](https://github.com/modelcontextprotocol/registry/pull/1404)
-- Observed at: `2026-08-30T17:15:48Z`
-- Upstream state: `open`, unmerged; `mergeable=true`, `mergeable_state=blocked`
+- Observed through: `2026-09-03T05:09:25Z`
+- Upstream state: `open`, unmerged; `mergeable=true`
 - Current observed HEAD: `9c9b76e102e43fe8f7bee1ba3e5f4f1c6a9a3ee6`
-- PR `updated_at`: `2026-08-30T04:35:22Z`
+- PR `updated_at`: `2026-09-03T05:09:25Z`
 - PR author: `eeee2345`
 - Formal reviews: none (`reviews=[]`)
-- Requested reviewers: none (`users=[]`, `teams=[]`)
-- Latest relevant signal: PR author `eeee2345` wrote
+- Requested reviewers: none
+- Positive discussion signal retained: PR author `eeee2345` wrote
   “+1 to @yandexuanxuan's consumer-side invariants upthread.” This is a
-  positive discussion signal only; it is not maintainer approval, a formal
-  review, a merge, or an invitation to submit an upstream change.
+  discussion signal only; it is not maintainer approval, a formal review, a
+  merge, or an invitation to submit an upstream change.
+- Latest external update: on 2026-09-03 `Nikolife2016` corrected the custody
+  dataset methodology and published a v2 reading. GitHub reports
+  `author_association=NONE` for that comment, so it is external evidence input,
+  not a Registry maintainer acceptance signal.
 
 ## Delta from the pinned profile
 
@@ -26,8 +30,8 @@ Pinned compatibility identity:
 registry-pr-1404@20747d3253ba8638161dd95f1cec70df02993c22
 ```
 
-The GitHub compare API reports one commit and two changed files between the
-pinned SHA and the current HEAD:
+The GitHub compare API previously reported one commit and two changed files
+between the pinned SHA and the current HEAD:
 
 - `docs/reference/server-json/CHANGELOG.md`
 - `docs/reference/server-json/generic-server-json.md`
@@ -44,10 +48,12 @@ pinned SHA and current HEAD:
 
 Classification: **B — `DOC_SEMANTIC_CHANGE_ONLY`**.
 
-The profile was re-evaluated against the current upstream HEAD. No structural
-`SecurityScanReceipt` change was observed, so **the existing immutable profile
-remains the compatibility identity**. The observation SHA must not replace the
-pinned profile SHA, and no new profile is required for this docs-only delta.
+The upstream HEAD remains
+`9c9b76e102e43fe8f7bee1ba3e5f4f1c6a9a3ee6` at this refresh, so the
+2026-09-03 comment changes evidence interpretation, not the consumed schema or
+document bytes. The existing immutable profile therefore remains the
+compatibility identity. The observation SHA must not replace the pinned profile
+SHA, and no new profile is required for this evidence-only delta.
 
 ## Downstream boundary and provenance gate
 
@@ -64,52 +70,73 @@ package-name custody, ownership continuity, or repository continuity. No
 `drift`/custody field, provenance input, new scan scope, or scanner-verdict
 mutation is introduced by this checkpoint.
 
-The ownership/source event series is now publicly available at
-`https://pulsefeed.dev/evidence/name-custody.json`. A reproducibility review on
-2026-08-31 independently parsed the raw event list and recomputed 177 custody
-events, 172 distinct packages, 82 without a same-day UTC version, 95 with one,
-and type counts `repo_changed=68`, `unpublished=50`, `maintainer_changed=38`,
-`repo_removed=21`. This confirms the published summary is recomputable, but does
-not establish event correctness or authoritative coverage: the producer is an
-interested party, coverage is limited to the stated registry/npm surfaces, and
-OpenTimestamps proves manifest existence timing rather than correctness.
+The custody series is now versioned on Zenodo. Dataset v2 is
+`https://doi.org/10.5281/zenodo.22268322`; the concept DOI for all versions is
+`https://doi.org/10.5281/zenodo.22251005`. On 2026-09-03 the producer explicitly
+retracted the earlier characterization of same-day/same-observation shares as
+“lower bounds”. Because custody changes and releases are inferred by diffing
+consecutive daily snapshots, their true event times are interval-censored.
+
+For the same 204-event series, the producer now reports two readings:
+
+| Event type | Total | No release, same observation | No release, same or adjacent observation (±1 day) |
+| --- | ---: | ---: | ---: |
+| maintainer-set changes | 42 | 32 (76.2%) | 23 (54.8%) |
+| repository URL changes | 77 | 1 (1.3%) | 1 (1.3%) |
+
+The producer also clarifies that a maintainer-set change is not itself proof of
+a transfer of control; package authority, registry-name authority, and
+repository provenance must be reported separately.
+
+These v2 figures are **producer-reported evidence**, not independently verified
+project facts. The 2026-08-31 independent recount of the then-live JSON remains
+a historical reproducibility observation only and must not be used as the
+current custody prevalence estimate. Coverage and trust limitations remain:
+the producer is an interested party, observation coverage is bounded by the
+stated registry/npm surfaces, and timestamp proofs establish evidence existence
+timing rather than semantic correctness.
 
 Accordingly `PROVENANCE_IMPLEMENTATION_GATE=PROTOTYPE_READY`: a downstream
-prototype/evaluator is justified, while production trusted provenance remains
-out of scope. The existing artifact-evidence dogfood remains the supported
+prototype/evaluator remains justified, while production trusted provenance is
+still out of scope. The existing artifact-evidence dogfood remains the supported
 consumer contract.
 
 ## Evidence references
 
-- Upstream PR snapshot, comments, reviews, requested reviewers, commits, and
-  checks were queried through the GitHub API at the observation time above.
+- Upstream PR state, HEAD, comments, and review status were refreshed through the
+  GitHub API through `2026-09-03T05:09:25Z`.
+- Latest custody-method correction:
+  `modelcontextprotocol/registry#1404` comment `5520801412`.
+- Dataset v2: `https://doi.org/10.5281/zenodo.22268322`.
+- Dataset concept DOI: `https://doi.org/10.5281/zenodo.22251005`.
 - Compare range:
   `20747d3253ba8638161dd95f1cec70df02993c22...9c9b76e102e43fe8f7bee1ba3e5f4f1c6a9a3ee6`
 - Local semantic boundary: [`evidence-semantics.md`](./evidence-semantics.md)
 - Local provenance boundary: [`provenance-drift-follow-up.md`](./provenance-drift-follow-up.md)
 - Downstream consumer: `yandexuanxuan/mcp-evidence-gate-dogfood`, whose Action
-  remains pinned to immutable release SHA
-  `7b1569284e321976b4b61378c223ce6a28fbdb9b` and covers matching-clean,
-  digest-mismatch, stale, findings, and malformed-receipt cases. Its latest
-  remote run ([`32941665676`](https://github.com/yandexuanxuan/mcp-evidence-gate-dogfood/actions/runs/32941665676)) completed all five matrix jobs successfully.
-- A separate real-artifact external Action run ([`33036548697`](https://github.com/yandexuanxuan/mcp-use/actions/runs/33036548697)) completed the matching-clean, digest-mismatch, and findings cases successfully.
+  remains a project-owned cross-repository consumer fixture. Dogfood evidence is
+  consumer-contract evidence, not proof of third-party adoption.
+- A separate real-artifact external Action run
+  ([`33036548697`](https://github.com/yandexuanxuan/mcp-use/actions/runs/33036548697))
+  completed matching-clean, digest-mismatch, and findings cases successfully;
+  this is a fork experiment and not upstream `mcp-use` adoption.
 
 ## Unknowns and reopen conditions
 
 ## 2026-08-31 downstream implementation state
 
-The historical dogfood observations above are retained unchanged. The current
-development branch adds explicit warning disposition and optional offline local
-`evidence_digest` binding. Its Action bundle is built from commit
-`f8a0b517a15896848530365f77d21482e34fdbca`; the companion dogfood branch pins
-that full SHA and adds permissive/strict warning cases. These feature branches
-are local pending authenticated push, so this is a development reference, not
-yet a public release tag.
+The historical dogfood observations above are retained as historical evidence.
+The current development line at that checkpoint added explicit warning
+disposition and optional offline local `evidence_digest` binding. Its Action
+bundle was built from commit `f8a0b517a15896848530365f77d21482e34fdbca`;
+the companion dogfood branch pinned that full SHA and added permissive/strict
+warning cases. This subsection is retained for chronology and is not a statement
+about the current default-branch head.
 
 Known unknowns are whether a Registry maintainer will formally review or merge
 #1404, whether the PR will receive additional schema changes, and whether the
-ownership/source dataset will become independently reproducible. Re-open the
+versioned custody dataset will receive independent v2 reproduction. Re-open the
 compatibility review if the PR schema changes substantively, the PR is merged
 or closed, a maintainer explicitly asks for consumer fixtures/profile/dogfood
-work, or a reproducible provenance dataset appears. Until then this checkpoint
-requires no upstream comment or PR.
+work, or an independently reproduced provenance dataset materially changes the
+trust assessment. Until then this checkpoint requires no upstream comment or PR.
