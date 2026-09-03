@@ -115,17 +115,35 @@ prototype must account for at least:
 
 Community-reported counts can motivate the experiment but must not be presented
 as compromise prevalence or attack probability. The ownership/source event
-series discussed in Registry PR #1404 is now publicly available at
-https://pulsefeed.dev/evidence/name-custody.json. A 2026-08-31 reproducibility
-review parsed its raw events and recomputed 177 events across 172 distinct
-packages: 82 without a same-calendar-day UTC version (46.3%) and 95 with one;
-type counts were repo_changed 68, unpublished 50, maintainer_changed 38, and
-repo_removed 21. This confirms the summary is recomputable, but not event
-correctness or authoritative coverage: the producer is an interested party,
-coverage is limited to the stated registry/npm surfaces, and OpenTimestamps
-proves manifest existence timing rather than correctness. The implementation
-gate is therefore `PROTOTYPE_READY`, suitable for a downstream evaluator but
-not a production trusted provenance source.
+series discussed in Registry PR #1404 is now published as a versioned dataset:
+version 2 is `https://doi.org/10.5281/zenodo.22268322` and the concept DOI for
+all versions is `https://doi.org/10.5281/zenodo.22251005`.
+
+On 2026-09-03 the dataset producer corrected an earlier methodological claim:
+the same-observation figures must not be described as lower bounds because both
+a custody change and a release are inferred from consecutive daily snapshots.
+Their true event times are therefore interval-censored, and snapshot boundaries
+can separate events that occurred only hours apart. The producer now reports the
+same 204-event series with both same-observation and adjacent-observation
+readings. For maintainer-set changes, 32 of 42 (76.2%) had no release in the
+same observation and 23 of 42 (54.8%) had no release in the same or adjacent
+observation (±1 day). For repository URL changes, the corresponding figures are
+1 of 77 (1.3%) under both readings. A maintainer-set change is also not treated
+as established transfer of control; package authority, registry-name authority,
+and repository provenance are separate layers.
+
+These v2 figures are recorded here as producer-reported evidence from the public
+Registry discussion. This checkpoint has not independently recomputed the v2
+archive, so they must not be promoted to independently verified project facts.
+The earlier 2026-08-31 recount of the then-live JSON remains historical evidence
+about reproducibility of that snapshot only; it must not be used as the current
+custody prevalence estimate. Coverage limitations and source-interest concerns
+also remain: the producer is an interested party, coverage is limited to the
+stated registry/npm surfaces, and timestamp proofs establish evidence existence
+timing rather than correctness.
+
+The implementation gate therefore remains `PROTOTYPE_READY`, suitable for a
+downstream evaluator but not a production trusted provenance source.
 
 ## Relationship to `scan_scope`
 
